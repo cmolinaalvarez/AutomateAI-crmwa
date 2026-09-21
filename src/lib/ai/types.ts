@@ -6,10 +6,10 @@
 // whether the account is on OpenAI, Anthropic, or OpenRouter.
 // ============================================================
 
-export type AiProvider = 'openai' | 'anthropic' | 'openrouter'
+export type AiProvider = 'openai' | 'anthropic' | 'openrouter' | 'gemini'
 
 /** Every valid `AiProvider` value, for validation and UI iteration. */
-export const AI_PROVIDERS: readonly AiProvider[] = ['openai', 'anthropic', 'openrouter']
+export const AI_PROVIDERS: readonly AiProvider[] = ['openai', 'anthropic', 'openrouter', 'gemini']
 
 /**
  * Account AI setup, decrypted and ready to use. Produced by

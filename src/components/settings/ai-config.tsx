@@ -42,12 +42,14 @@ const PROVIDER_LABEL: Record<AiProvider, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic (Claude)',
   openrouter: 'OpenRouter',
+  gemini: 'Google Gemini',
 };
 
 const KEY_PLACEHOLDER: Record<AiProvider, string> = {
   openai: 'sk-...',
   anthropic: 'sk-ant-...',
   openrouter: 'sk-or-...',
+  gemini: 'AIza...',
 };
 
 export function AiConfig() {
@@ -286,6 +288,7 @@ export function AiConfig() {
                     <SelectItem value="openrouter">
                       {PROVIDER_LABEL.openrouter}
                     </SelectItem>
+                    <SelectItem value="gemini">{PROVIDER_LABEL.gemini}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

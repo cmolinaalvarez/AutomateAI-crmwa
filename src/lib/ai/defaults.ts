@@ -16,6 +16,9 @@ export const AI_PROVIDER_DEFAULT_MODEL: Record<AiProvider, string> = {
   // OpenRouter routes by `<publisher>/<model>` id — this default just
   // picks something cheap and fast; any id it lists works here.
   openrouter: 'openai/gpt-5.4-mini',
+  // Has a free tier (rate-limited) on Google AI Studio keys — a good
+  // default for trying the assistant at no cost.
+  gemini: 'gemini-2.5-flash',
 }
 
 /**
