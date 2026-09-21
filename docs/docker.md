@@ -57,9 +57,9 @@ docker run -d --env-file .env.local -e PORT=3000 -p 3000:3000 wacrm
 
 ## Notes
 
-- Database migrations under `supabase/` are **not** run by the
-  container — apply them with the Supabase CLI as described in the
-  README.
+- Database migrations under `prisma/` are **not** run by the
+  container — apply them with `npx prisma migrate deploy` as described
+  in [docs/prisma-migrations.md](./prisma-migrations.md).
 - Received attachments are copied into the `chat-media` Supabase
   Storage bucket, because Meta deletes media roughly 30 days after it
   arrives and the copy is the only thing that outlives that. It grows

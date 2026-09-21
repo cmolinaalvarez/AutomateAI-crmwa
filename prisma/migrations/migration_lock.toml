@@ -1,0 +1,5 @@
+# Prisma uses this file to check that no other provider was used before you
+# switched database provider. If you are certain that you do not need this
+# check, you can safely delete this file.
+
+provider = "postgresql"
