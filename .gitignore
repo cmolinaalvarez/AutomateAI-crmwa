@@ -44,4 +44,5 @@ yarn-error.log*
 next-env.d.ts
 
 # otros
-/docs
+/docs/*
+!/docs/manual.md

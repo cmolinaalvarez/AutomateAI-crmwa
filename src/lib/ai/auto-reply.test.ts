@@ -169,7 +169,9 @@ beforeEach(() => {
   h.state.notificationPayloads = []
   h.state.rpcCalls = []
   h.loadAiConfig.mockResolvedValue(aiConfig())
-  h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'hi' }])
+  h.buildConversationContext.mockResolvedValue([
+    { role: 'user', content: 'I need help with my order' },
+  ])
   h.retrieveKnowledge.mockResolvedValue([])
   h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false })
   h.engineSendText.mockResolvedValue({ whatsapp_message_id: 'm1' })
@@ -256,6 +258,23 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     expect(h.retrieveKnowledge).toHaveBeenCalled()
     const systemPrompt = h.generateReply.mock.calls[0][0].systemPrompt as string
     expect(systemPrompt).toContain('Returns accepted within 30 days.')
+  })
+
+  it('answers a greeting locally without model, knowledge, or handoff', async () => {
+    h.buildConversationContext.mockResolvedValue([
+      { role: 'user', content: 'Hola buenas tardes' },
+    ])
+
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.retrieveKnowledge).not.toHaveBeenCalled()
+    expect(h.generateReply).not.toHaveBeenCalled()
+    expect(h.state.updatePayload).toBeNull()
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: '¡Hola! ¿En qué podemos ayudarte?',
+      }),
+    )
   })
 
   it('stands down when an active message-level automation exists', async () => {

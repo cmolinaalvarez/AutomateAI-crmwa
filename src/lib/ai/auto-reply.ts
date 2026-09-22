@@ -7,6 +7,7 @@ import { buildSystemPrompt } from './defaults'
 import { buildHandoffSummary } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
+import { greetingOnlyReply } from './greeting'
 import {
   engineSendMedia,
   engineSendText,
@@ -175,42 +176,52 @@ export async function dispatchInboundToAiReply(
       await showTypingIndicator(db, accountId, inboundMessageId)
     }
 
-    // Ground the reply in the account's knowledge base (best-effort).
-    const knowledge = await retrieveKnowledge(
-      db,
-      accountId,
-      config,
-      latestUserMessage(messages),
-    )
+    const latestCustomerText = latestUserMessage(messages)
+    const localGreetingReply = greetingOnlyReply(latestCustomerText)
+    let generated
 
-    const systemPrompt = buildSystemPrompt({
-      userPrompt: config.systemPrompt,
-      mode: 'auto_reply',
-      knowledge,
-      routingRules: config.autoAssignmentEnabled
-        ? config.autoAssignmentRules
-        : undefined,
-    })
+    if (localGreetingReply) {
+      generated = {
+        text: localGreetingReply,
+        handoff: false,
+        usage: null,
+      }
+    } else {
+      // Ground concrete requests in the account's knowledge base (best-effort).
+      const knowledge = await retrieveKnowledge(
+        db,
+        accountId,
+        config,
+        latestCustomerText,
+      )
 
-    const { text, handoff, routingKey, usage } = await generateReply({
-      config,
-      systemPrompt,
-      messages,
-    })
+      const systemPrompt = buildSystemPrompt({
+        userPrompt: config.systemPrompt,
+        mode: 'auto_reply',
+        knowledge,
+        routingRules: config.autoAssignmentEnabled
+          ? config.autoAssignmentRules
+          : undefined,
+      })
 
-    // Record token spend on the account's BYO key. Fire-and-forget so it
-    // never adds latency to the customer-facing send: `logAiUsage`
-    // swallows its own errors, so the floating promise can't reject.
-    // Logged regardless of handoff — the provider call happened either
-    // way.
-    void logAiUsage(db, {
-      accountId,
-      conversationId,
-      mode: 'auto_reply',
-      provider: config.provider,
-      model: config.model,
-      usage,
-    })
+      generated = await generateReply({
+        config,
+        systemPrompt,
+        messages,
+      })
+
+      // Record token spend only when the provider call happened.
+      void logAiUsage(db, {
+        accountId,
+        conversationId,
+        mode: 'auto_reply',
+        provider: config.provider,
+        model: config.model,
+        usage: generated.usage,
+      })
+    }
+
+    const { text, handoff, routingKey } = generated
 
     if (handoff || !text) {
       // The model can't (or shouldn't) answer — stop auto-replying on

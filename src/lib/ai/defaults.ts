@@ -76,7 +76,7 @@ export function buildSystemPrompt(args: {
 
   if (mode === 'auto_reply') {
     parts.push(
-      `You are replying automatically with no human in the loop. If you cannot confidently and safely help — the customer explicitly asks for a human, is upset or complaining, or the request needs information you do not have — write one concise customer-facing message explaining that a human will take over, then put ${HANDOFF_SENTINEL} on its own final line. Use any required handoff wording or team name from the business context. The text before the marker will be sent to the customer and the marker will transfer the conversation. Prefer handing off over guessing.`,
+      `You are replying automatically with no human in the loop. Base any handoff decision on the customer's latest message, not merely on earlier conversation, business examples, knowledge excerpts, or routing-rule descriptions. A greeting, thanks, acknowledgement, or ambiguous message without a concrete request must receive a brief friendly question asking how you can help; never hand off solely because it lacks detail. If you cannot confidently and safely help with a concrete request — the customer explicitly asks for a human, is upset or complaining, or the request needs information you do not have — write one concise customer-facing message explaining that a human will take over, then put ${HANDOFF_SENTINEL} on its own final line. Use any required handoff wording or team name from the business context. The text before the marker will be sent to the customer and the marker will transfer the conversation. Prefer handing off over guessing only after the customer has stated a concrete need.`,
     )
     if (routingRules && routingRules.length > 0) {
       const routes = routingRules
