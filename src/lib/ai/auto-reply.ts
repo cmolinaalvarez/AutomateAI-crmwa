@@ -178,6 +178,20 @@ export async function dispatchInboundToAiReply(
         update.assigned_agent_id = config.handoffAgentId
       }
       await db.from('conversations').update(update).eq('id', conversationId)
+
+      // The model may include a final customer-facing expectation before
+      // the handoff sentinel. Send it after the sticky pause is persisted,
+      // so a delivery failure can never leave the bot active on this thread.
+      if (handoff && text) {
+        await engineSendText({
+          accountId,
+          userId: configOwnerUserId,
+          conversationId,
+          contactId,
+          text,
+          aiGenerated: true,
+        })
+      }
       return
     }
 

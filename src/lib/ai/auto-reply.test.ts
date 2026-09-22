@@ -225,7 +225,7 @@ describe('dispatchInboundToAiReply — typing indicator (#527)', () => {
   })
 
   it('still sends the reply when the indicator request fails', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => { })
     h.sendTypingIndicator.mockRejectedValue(new Error('Meta API error: 400'))
     await dispatchInboundToAiReply(ARGS)
     expect(h.generateReply).toHaveBeenCalledTimes(1)
@@ -240,7 +240,7 @@ describe('dispatchInboundToAiReply — typing indicator (#527)', () => {
   })
 
   it('still sends the reply when the WhatsApp credentials cannot be loaded', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => { })
     h.loadAccountMetaCredentials.mockRejectedValue(
       new Error('WhatsApp not configured for this account'),
     )
@@ -289,5 +289,24 @@ describe('dispatchInboundToAiReply — handoff', () => {
       ai_autoreply_disabled: true,
       assigned_agent_id: 'agent-7',
     })
+  })
+
+  it('sends the customer-facing message included with a handoff', async () => {
+    h.generateReply.mockResolvedValue({
+      text: 'Un especialista del equipo te escribirá en breve por este medio.',
+      handoff: true,
+    })
+
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.state.updatePayload).toMatchObject({ ai_autoreply_disabled: true })
+    expect(h.state.rpcCalls).toHaveLength(0)
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conv-1',
+        text: 'Un especialista del equipo te escribirá en breve por este medio.',
+        aiGenerated: true,
+      }),
+    )
   })
 })
