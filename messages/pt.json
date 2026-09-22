@@ -1837,7 +1837,7 @@
       "audioModeFirst": "2. Áudio inicial: atender o primeiro e pedir texto depois",
       "audioModeFull": "3. Áudio completo: transcrever e responder com voz",
       "maxAutoReplies": "Máximo de respostas automáticas por conversa",
-      "maxAutoRepliesDesc": "Após esta quantidade de respostas do bot em uma mesma conversa, o bot fica em silêncio.",
+      "maxAutoRepliesDesc": "Ao atingir este limite, a IA pausa a conversa, avisa o cliente e transfere para uma pessoa.",
       "handoffTo": "Transferir para",
       "handoffToDesc": "Quando o bot não consegue ajudar — ou atinge o limite de respostas — ele pausa e encaminha a conversa para aqui, com uma breve nota do que aconteceu.",
       "handoffQueue": "Fila sem atribuição (qualquer agente pode assumir)",

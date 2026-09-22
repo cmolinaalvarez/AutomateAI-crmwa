@@ -645,9 +645,15 @@ export function MessageThread({
       if (!conversation) return;
 
       const supabase = createClient();
+      const update: Record<string, unknown> = { status };
+      if (conversation.status === "closed" && status !== "closed") {
+        update.ai_reply_count = 0;
+        update.ai_autoreply_disabled = false;
+        update.ai_handoff_summary = null;
+      }
       await supabase
         .from("conversations")
-        .update({ status })
+        .update(update)
         .eq("id", conversation.id);
 
       onStatusChange(conversation.id, status);

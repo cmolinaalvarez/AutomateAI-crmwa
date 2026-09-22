@@ -44,7 +44,7 @@ function stubClient(error: { message: string } | null = null) {
 }
 
 describe('reopenClosedConversation', () => {
-  it('flips a closed conversation back to open', async () => {
+  it('opens a fresh AI session while preserving the conversation', async () => {
     const { client, calls } = stubClient()
 
     const reopened = await reopenClosedConversation(client, {
@@ -55,7 +55,13 @@ describe('reopenClosedConversation', () => {
     expect(reopened).toBe(true)
     expect(calls).toHaveLength(1)
     expect(calls[0].table).toBe('conversations')
-    expect(calls[0].payload).toMatchObject({ status: 'open' })
+    expect(calls[0].payload).toMatchObject({
+      status: 'open',
+      ai_reply_count: 0,
+      ai_autoreply_disabled: false,
+      ai_handoff_summary: null,
+    })
+    expect(calls[0].payload).not.toHaveProperty('assigned_agent_id')
     expect(calls[0].payload).toHaveProperty('updated_at')
   })
 

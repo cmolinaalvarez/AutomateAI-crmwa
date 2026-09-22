@@ -1843,7 +1843,7 @@
       "audioModeFirst": "2. First audio: handle the first one, then request text",
       "audioModeFull": "3. Full audio: transcribe and answer audio with voice",
       "maxAutoReplies": "Max auto-replies per conversation",
-      "maxAutoRepliesDesc": "After this many bot replies in one thread, the bot goes quiet.",
+      "maxAutoRepliesDesc": "At this limit, AI pauses the thread, informs the customer, and hands it to a person.",
       "handoffTo": "Hand off to",
       "handoffToDesc": "When the bot can’t help — or hits the reply cap — it pauses and routes the chat here, with a short note on what happened.",
       "handoffQueue": "Unassigned queue (any agent can pick it up)",

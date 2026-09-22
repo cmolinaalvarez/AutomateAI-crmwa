@@ -617,18 +617,22 @@ Revisar, en este orden:
 7. ¿Se alcanzó el máximo de respuestas automáticas del hilo?
 8. ¿La clave y el proveedor de IA funcionan?
 
-## La conversación quedó en silencio al alcanzar el máximo
+## La conversación alcanzó el máximo de respuestas
 
-El máximo de respuestas es un límite de seguridad. En el comportamiento actual,
-si el contador ya alcanzó ese límite, la IA deja de responder al siguiente mensaje,
-pero ese evento por sí solo no genera un mensaje de transferencia ni una asignación.
+El máximo de respuestas es un límite de seguridad. Al alcanzarlo, AutomateAI no
+deja al cliente en silencio: pausa la IA, envía un aviso de continuidad humana y
+asigna el hilo al destino global de **Derivar a**. Si el destino es la cola sin
+asignar, notifica al propietario para que coordine la atención.
+
+Los saludos respondidos localmente, como **Hola** o **Buenas tardes**, no consumen
+este contador porque no llaman al proveedor de IA.
 
 Acción operativa:
 
-1. Supervisar conversaciones abiertas y no leídas.
-2. Asignar el caso a una persona.
-3. Responder al cliente y explicar que continuará con atención humana.
-4. Usar **Reanudar IA** solo si se desea reiniciar el contador.
+1. Abrir la conversación pausada y leer la nota interna de límite alcanzado.
+2. Atenderla con **Tomar el control** o desde el miembro asignado.
+3. Usar **Reanudar IA** únicamente si se desea quitar la asignación, reiniciar el
+	contador y devolver la conversación al asistente automático.
 
 ## La IA se pausó pero nadie recibió notificación
 
@@ -891,6 +895,33 @@ Al cerrar una conversación se conserva el responsable como historial, pero la
 conversación deja de incluirse en el contador personal de asignaciones activas.
 Ese contador solo incluye conversaciones asignadas con estado **Abierta** o
 **Pendiente**.
+
+### Iniciar una nueva sesión con el mismo contacto
+
+AutomateAI conserva una sola conversación por contacto para mantener todo el
+historial en un mismo hilo. Una nueva atención no crea otro registro de
+conversación: crea una sesión nueva dentro de ese hilo.
+
+La sesión nueva comienza de cualquiera de estas formas:
+
+1. Marcar la conversación como **Cerrada** y esperar un nuevo mensaje del cliente;
+	el webhook la cambia automáticamente a **Abierta**.
+2. Abrir el filtro **Cerradas**, seleccionar el hilo y cambiar manualmente el
+	estado a **Abierta** o **Pendiente**.
+
+Al pasar de **Cerrada** a un estado activo, el sistema:
+
+- Conserva todos los mensajes y el responsable asignado.
+- Reinicia a cero el contador **Máximo de respuestas automáticas por conversación**.
+- Quita la pausa y la nota de derivación de la sesión de IA anterior.
+
+Si se conserva un responsable asignado, la IA automática permanece sin responder
+porque la persona asignada tiene prioridad. Para devolver la sesión a la IA se
+debe pulsar **Quitar asignación** o **Reanudar IA**, según el estado mostrado.
+
+Para iniciar el contacto desde la empresa fuera de la ventana de 24 horas se debe
+enviar una plantilla aprobada; abrir el estado del hilo no reemplaza esta regla de
+WhatsApp.
 
 ## 18.5 Asignar una conversación
 

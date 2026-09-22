@@ -270,6 +270,7 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     expect(h.retrieveKnowledge).not.toHaveBeenCalled()
     expect(h.generateReply).not.toHaveBeenCalled()
     expect(h.state.updatePayload).toBeNull()
+    expect(h.state.rpcCalls).toHaveLength(0)
     expect(h.engineSendText).toHaveBeenCalledWith(
       expect.objectContaining({
         text: '¡Hola! ¿En qué podemos ayudarte?',
@@ -285,12 +286,16 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     expect(h.sendTypingIndicator).not.toHaveBeenCalled()
   })
 
-  it('does not send when the atomic slot claim loses the race', async () => {
+  it('hands off when the atomic slot claim loses the race', async () => {
     h.state.claim = false
     await dispatchInboundToAiReply(ARGS)
-    // It still attempts the claim, but the send is skipped.
     expect(h.state.rpcCalls).toHaveLength(1)
-    expect(h.engineSendText).not.toHaveBeenCalled()
+    expect(h.state.updatePayload).toMatchObject({
+      ai_autoreply_disabled: true,
+    })
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('our team') }),
+    )
   })
 
   it('skips when AI is off / not configured', async () => {
@@ -327,14 +332,21 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     expect(h.engineSendText).not.toHaveBeenCalled()
   })
 
-  it('skips when the per-conversation cap is reached', async () => {
+  it('hands off and informs the customer when the cap is reached', async () => {
     h.state.conv = {
       assigned_agent_id: null,
       ai_autoreply_disabled: false,
       ai_reply_count: 3,
     }
     await dispatchInboundToAiReply(ARGS)
-    expect(h.engineSendText).not.toHaveBeenCalled()
+    expect(h.generateReply).not.toHaveBeenCalled()
+    expect(h.state.updatePayload).toMatchObject({
+      ai_autoreply_disabled: true,
+      ai_handoff_summary: expect.stringContaining('reply limit reached'),
+    })
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('our team') }),
+    )
   })
 
   it('skips when there is nothing to reply to', async () => {

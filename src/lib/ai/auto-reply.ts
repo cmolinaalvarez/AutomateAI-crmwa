@@ -8,6 +8,7 @@ import { buildHandoffSummary } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import { greetingOnlyReply } from './greeting'
+import { replyLimitMessage } from './reply-limit'
 import {
   engineSendMedia,
   engineSendText,
@@ -16,7 +17,7 @@ import {
 import { sendTypingIndicator } from '@/lib/whatsapp/meta-api'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { derivePresence } from '@/lib/presence'
-import type { AiConfig, AiRoutingRule } from './types'
+import type { AiConfig, AiRoutingRule, ChatMessage } from './types'
 import {
   audioServiceApiKey,
   FIRST_AUDIO_REMINDER,
@@ -118,9 +119,25 @@ export async function dispatchInboundToAiReply(
     if (convErr || !conv) return
     if (conv.assigned_agent_id) return // a human owns this thread
     if (conv.ai_autoreply_disabled) return // handed off / turned off here
-    // Cheap early-out; the authoritative cap check is the atomic claim
-    // below (this read can race a concurrent inbound).
-    if (conv.ai_reply_count >= config.autoReplyMaxPerConversation) return
+    // A reached cap transfers ownership instead of silently ignoring the
+    // customer. This path performs no provider call.
+    if (conv.ai_reply_count >= config.autoReplyMaxPerConversation) {
+      const messages = await buildConversationContext(
+        db,
+        conversationId,
+        undefined,
+        config.audioMode !== 'text_only',
+      )
+      await handoffAtReplyLimit(db, config, {
+        accountId,
+        conversationId,
+        contactId,
+        configOwnerUserId,
+        messages,
+        replyCount: conv.ai_reply_count,
+      })
+      return
+    }
 
     if (isAudioInbound) {
       const audioKey = audioServiceApiKey(config)
@@ -223,6 +240,20 @@ export async function dispatchInboundToAiReply(
 
     const { text, handoff, routingKey } = generated
 
+    // This answer did not use the model, so it does not consume a paid
+    // automatic-reply slot or shorten the useful conversation.
+    if (localGreetingReply) {
+      await sendAiResponse(db, config, {
+        accountId,
+        userId: configOwnerUserId,
+        conversationId,
+        contactId,
+        text,
+        audio: false,
+      })
+      return
+    }
+
     if (handoff || !text) {
       // The model can't (or shouldn't) answer — stop auto-replying on
       // this thread and hand it to a human. We (a) pause the bot here
@@ -312,7 +343,17 @@ export async function dispatchInboundToAiReply(
       console.error('[ai auto-reply] claim_ai_reply_slot failed:', claimErr)
       return
     }
-    if (claimed !== true) return // lost the per-conversation cap race
+    if (claimed !== true) {
+      await handoffAtReplyLimit(db, config, {
+        accountId,
+        conversationId,
+        contactId,
+        configOwnerUserId,
+        messages,
+        replyCount: config.autoReplyMaxPerConversation,
+      })
+      return
+    }
 
     await sendAiResponse(db, config, {
       accountId,
@@ -325,6 +366,54 @@ export async function dispatchInboundToAiReply(
   } catch (err) {
     console.error('[ai auto-reply] dispatch failed:', err)
   }
+}
+
+async function handoffAtReplyLimit(
+  db: ReturnType<typeof supabaseAdmin>,
+  config: AiConfig,
+  args: {
+    accountId: string
+    conversationId: string
+    contactId: string
+    configOwnerUserId: string
+    messages: ChatMessage[]
+    replyCount: number
+  },
+): Promise<void> {
+  const summary = `${buildHandoffSummary({
+    messages: args.messages,
+    replyCount: args.replyCount,
+  })} Automatic reply limit reached.`
+  const update: Record<string, unknown> = {
+    ai_autoreply_disabled: true,
+    ai_handoff_summary: summary,
+  }
+  if (config.handoffAgentId) update.assigned_agent_id = config.handoffAgentId
+
+  await db
+    .from('conversations')
+    .update(update)
+    .eq('id', args.conversationId)
+    .eq('account_id', args.accountId)
+
+  if (!config.handoffAgentId) {
+    await notifyOwnerOfQueuedHandoff(db, {
+      accountId: args.accountId,
+      conversationId: args.conversationId,
+      contactId: args.contactId,
+      summary,
+      title: 'AI reply limit needs attention',
+    })
+  }
+
+  await engineSendText({
+    accountId: args.accountId,
+    userId: args.configOwnerUserId,
+    conversationId: args.conversationId,
+    contactId: args.contactId,
+    text: replyLimitMessage(args.messages),
+    aiGenerated: true,
+  })
 }
 
 async function sendAiResponse(

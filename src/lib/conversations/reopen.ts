@@ -4,13 +4,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  * Re-open a closed conversation because the customer wrote again
  * (issue #409).
  *
- * Inbound processing bumps `unread_count` but used to leave `status`
- * alone, so a thread an agent closed — or that a `close_conversation`
- * automation step closed — stayed `closed` while accumulating unread
- * customer messages. It read as resolved, and it dropped out of the
- * inbox's Open filter, so an agent working that filter never saw the
- * reply. (Automation dispatch is unaffected either way: it keys on
- * account + trigger + contact, never conversation status.)
+ * Reopening starts a fresh service session on the same durable thread:
+ * message history and assignment remain available, while the AI reply
+ * budget and handoff state from the resolved session are cleared.
  *
  * Lives here rather than inline in the webhook so it can be tested
  * without standing up the whole route, and so any future inbound path
@@ -26,7 +22,13 @@ export async function reopenClosedConversation(
 
   const { error } = await db
     .from('conversations')
-    .update({ status: 'open', updated_at: new Date().toISOString() })
+    .update({
+      status: 'open',
+      ai_reply_count: 0,
+      ai_autoreply_disabled: false,
+      ai_handoff_summary: null,
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', conversation.id)
     // Re-checked in SQL, not just in the `if` above: the caller's row was
     // read earlier in the request, so two concurrent inbound deliveries

@@ -1837,7 +1837,7 @@
       "audioModeFirst": "2. Audio inicial: atender el primero y pedir continuar por texto",
       "audioModeFull": "3. Audio completo: transcribir y responder audios con voz",
       "maxAutoReplies": "Máximo de respuestas automáticas por conversación",
-      "maxAutoRepliesDesc": "Después de esta cantidad de respuestas del bot en un mismo hilo, el bot guarda silencio.",
+      "maxAutoRepliesDesc": "Al alcanzar este límite, la IA pausa el hilo, avisa al cliente y lo deriva a atención humana.",
       "handoffTo": "Derivar a",
       "handoffToDesc": "Cuando el bot deriva una conversación, se pausa y dirige el chat aquí con una nota. Un miembro específico recibe la asignación; en la cola sin asignar, se notifica al propietario para que coordine el caso.",
       "handoffQueue": "Cola sin asignar (notificar al propietario)",
