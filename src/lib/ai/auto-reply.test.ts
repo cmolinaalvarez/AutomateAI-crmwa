@@ -15,6 +15,10 @@ const h = vi.hoisted(() => ({
     autoResponders: [] as { id: string }[],
     claim: true as boolean,
     updatePayload: null as Record<string, unknown> | null,
+    accountOwnerUserId: 'owner-1' as string | null,
+    members: {} as Record<string, { user_id: string; full_name: string }>,
+    presence: {} as Record<string, { status: 'online' | 'away'; last_seen_at: string }>,
+    notificationPayloads: [] as Record<string, unknown>[],
     rpcCalls: [] as { name: string; args: unknown }[],
   },
 }))
@@ -44,17 +48,62 @@ vi.mock('./admin-client', () => ({
         }
         return chain
       }
-      // conversations
-      return {
-        select: () => ({
-          eq: () => ({
-            maybeSingle: () =>
-              Promise.resolve({ data: h.state.conv, error: null }),
+      if (table === 'accounts') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({
+                  data: h.state.accountOwnerUserId
+                    ? { owner_user_id: h.state.accountOwnerUserId }
+                    : null,
+                  error: null,
+                }),
+            }),
           }),
-        }),
+        }
+      }
+      if (table === 'notifications') {
+        return {
+          insert: (payload: Record<string, unknown>) => {
+            h.state.notificationPayloads.push(payload)
+            return Promise.resolve({ error: null })
+          },
+        }
+      }
+      if (table === 'profiles' || table === 'member_presence') {
+        let userId = ''
+        const chain = {
+          select: () => chain,
+          eq: (column: string, value: string) => {
+            if (column === 'user_id') userId = value
+            return chain
+          },
+          maybeSingle: () => Promise.resolve({
+            data: table === 'profiles'
+              ? h.state.members[userId] ?? null
+              : h.state.presence[userId] ?? null,
+            error: null,
+          }),
+        }
+        return chain
+      }
+      // conversations
+      const selectChain = {
+        eq: () => selectChain,
+        maybeSingle: () =>
+          Promise.resolve({ data: h.state.conv, error: null }),
+      }
+      const updateChain = {
+        eq: () => updateChain,
+        then: (resolve: (value: { error: null }) => unknown) =>
+          Promise.resolve({ error: null }).then(resolve),
+      }
+      return {
+        select: () => selectChain,
         update: (payload: Record<string, unknown>) => {
           h.state.updatePayload = payload
-          return { eq: () => Promise.resolve({ error: null }) }
+          return updateChain
         },
       }
     },
@@ -85,6 +134,8 @@ function aiConfig(overrides: Partial<AiConfig> = {}): AiConfig {
     autoReplyEnabled: true,
     autoReplyMaxPerConversation: 3,
     handoffAgentId: null,
+    autoAssignmentEnabled: false,
+    autoAssignmentRules: [],
     embeddingsApiKey: null,
     ...overrides,
   }
@@ -99,6 +150,10 @@ beforeEach(() => {
   h.state.autoResponders = []
   h.state.claim = true
   h.state.updatePayload = null
+  h.state.accountOwnerUserId = 'owner-1'
+  h.state.members = {}
+  h.state.presence = {}
+  h.state.notificationPayloads = []
   h.state.rpcCalls = []
   h.loadAiConfig.mockResolvedValue(aiConfig())
   h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'hi' }])
@@ -279,6 +334,13 @@ describe('dispatchInboundToAiReply — handoff', () => {
     )
     // No handoff target configured → conversation left unassigned.
     expect(h.state.updatePayload).not.toHaveProperty('assigned_agent_id')
+    expect(h.state.notificationPayloads).toEqual([
+      expect.objectContaining({
+        user_id: 'owner-1',
+        conversation_id: 'conv-1',
+        title: 'AI handoff needs assignment',
+      }),
+    ])
   })
 
   it('routes to the configured handoff agent on handoff', async () => {
@@ -289,6 +351,92 @@ describe('dispatchInboundToAiReply — handoff', () => {
       ai_autoreply_disabled: true,
       assigned_agent_id: 'agent-7',
     })
+    expect(h.state.notificationPayloads).toHaveLength(0)
+  })
+
+  it('automatically routes to the selected online specialist', async () => {
+    h.loadAiConfig.mockResolvedValue(aiConfig({
+      autoAssignmentEnabled: true,
+      autoAssignmentRules: [{
+        key: 'billing',
+        label: 'Billing',
+        description: 'Invoices and refunds',
+        targetUserId: 'agent-8',
+      }],
+    }))
+    h.state.members['agent-8'] = { user_id: 'agent-8', full_name: 'Ada Billing' }
+    h.state.presence['agent-8'] = {
+      status: 'online',
+      last_seen_at: new Date().toISOString(),
+    }
+    h.generateReply.mockResolvedValue({
+      text: '',
+      handoff: true,
+      routingKey: 'billing',
+    })
+
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.state.updatePayload).toMatchObject({
+      assigned_agent_id: 'agent-8',
+      ai_autoreply_disabled: true,
+    })
+    expect(h.state.updatePayload?.ai_handoff_summary).toContain('selected Billing')
+    expect(h.state.notificationPayloads).toHaveLength(0)
+  })
+
+  it('uses the global fallback and alerts the owner when the specialist is away', async () => {
+    h.loadAiConfig.mockResolvedValue(aiConfig({
+      handoffAgentId: 'coordinator-1',
+      autoAssignmentEnabled: true,
+      autoAssignmentRules: [{
+        key: 'sales',
+        label: 'Sales',
+        description: 'New purchases',
+        targetUserId: 'agent-9',
+      }],
+    }))
+    h.state.members['agent-9'] = { user_id: 'agent-9', full_name: 'Sam Sales' }
+    h.state.presence['agent-9'] = {
+      status: 'away',
+      last_seen_at: new Date().toISOString(),
+    }
+    h.generateReply.mockResolvedValue({ text: '', handoff: true, routingKey: 'sales' })
+
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.state.updatePayload).toMatchObject({ assigned_agent_id: 'coordinator-1' })
+    expect(h.state.updatePayload?.ai_handoff_summary).toContain('member is away')
+    expect(h.state.notificationPayloads).toEqual([
+      expect.objectContaining({
+        user_id: 'owner-1',
+        title: 'AI routing fallback needs attention',
+      }),
+    ])
+  })
+
+  it('falls back when the specialist heartbeat is stale', async () => {
+    h.loadAiConfig.mockResolvedValue(aiConfig({
+      autoAssignmentEnabled: true,
+      autoAssignmentRules: [{
+        key: 'support',
+        label: 'Support',
+        description: 'Technical issues',
+        targetUserId: 'agent-10',
+      }],
+    }))
+    h.state.members['agent-10'] = { user_id: 'agent-10', full_name: 'Tess Support' }
+    h.state.presence['agent-10'] = {
+      status: 'online',
+      last_seen_at: new Date(Date.now() - 120_000).toISOString(),
+    }
+    h.generateReply.mockResolvedValue({ text: '', handoff: true, routingKey: 'support' })
+
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.state.updatePayload).not.toHaveProperty('assigned_agent_id')
+    expect(h.state.updatePayload?.ai_handoff_summary).toContain('member is offline')
+    expect(h.state.notificationPayloads).toHaveLength(1)
   })
 
   it('sends the customer-facing message included with a handoff', async () => {

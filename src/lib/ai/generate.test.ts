@@ -12,8 +12,10 @@ function config(overrides: Partial<AiConfig> = {}): AiConfig {
     autoReplyEnabled: false,
     autoReplyMaxPerConversation: 3,
     handoffAgentId: null,
-    embeddingsApiKey: null,
     ...overrides,
+    autoAssignmentEnabled: overrides.autoAssignmentEnabled ?? false,
+    autoAssignmentRules: overrides.autoAssignmentRules ?? [],
+    embeddingsApiKey: overrides.embeddingsApiKey ?? null,
   }
 }
 
@@ -56,6 +58,15 @@ describe('parseGeneration', () => {
     expect(parseGeneration('Let me get a human [[HANDOFF]]')).toEqual({
       text: 'Let me get a human',
       handoff: true,
+      usage: null,
+    })
+  })
+
+  it('extracts and strips an automatic-routing handoff key', () => {
+    expect(parseGeneration('A specialist will help.\n[[HANDOFF:billing]]')).toEqual({
+      text: 'A specialist will help.',
+      handoff: true,
+      routingKey: 'billing',
       usage: null,
     })
   })

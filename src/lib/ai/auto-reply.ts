@@ -13,6 +13,8 @@ import {
 } from '@/lib/flows/meta-send'
 import { sendTypingIndicator } from '@/lib/whatsapp/meta-api'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { derivePresence } from '@/lib/presence'
+import type { AiConfig, AiRoutingRule } from './types'
 
 interface DispatchArgs {
   /** Tenancy key — drives config, contact, and whatsapp_config lookups. */
@@ -85,6 +87,7 @@ export async function dispatchInboundToAiReply(
       .from('conversations')
       .select('assigned_agent_id, ai_autoreply_disabled, ai_reply_count')
       .eq('id', conversationId)
+      .eq('account_id', accountId)
       .maybeSingle()
     if (convErr || !conv) return
     if (conv.assigned_agent_id) return // a human owns this thread
@@ -134,9 +137,12 @@ export async function dispatchInboundToAiReply(
       userPrompt: config.systemPrompt,
       mode: 'auto_reply',
       knowledge,
+      routingRules: config.autoAssignmentEnabled
+        ? config.autoAssignmentRules
+        : undefined,
     })
 
-    const { text, handoff, usage } = await generateReply({
+    const { text, handoff, routingKey, usage } = await generateReply({
       config,
       systemPrompt,
       messages,
@@ -168,16 +174,43 @@ export async function dispatchInboundToAiReply(
         messages,
         replyCount: conv.ai_reply_count ?? 0,
       })
+      const route = config.autoAssignmentEnabled
+        ? await resolveAutomaticRoute(db, accountId, config, routingKey)
+        : null
+      const handoffSummary = route?.audit
+        ? `${summary} Automatic routing: ${route.audit}`
+        : summary
+      const assignedAgentId = route?.targetUserId ?? config.handoffAgentId
       const update: Record<string, unknown> = {
         ai_autoreply_disabled: true,
-        ai_handoff_summary: summary,
+        ai_handoff_summary: handoffSummary,
       }
       // Only set the assignee when a target is configured AND the thread
       // isn't already owned — never stomp an existing human assignment.
-      if (config.handoffAgentId && !conv.assigned_agent_id) {
-        update.assigned_agent_id = config.handoffAgentId
+      if (assignedAgentId && !conv.assigned_agent_id) {
+        update.assigned_agent_id = assignedAgentId
       }
-      await db.from('conversations').update(update).eq('id', conversationId)
+      await db
+        .from('conversations')
+        .update(update)
+        .eq('id', conversationId)
+        .eq('account_id', accountId)
+
+      // A configured target gets the existing assignment notification from
+      // the database trigger. A shared-queue handoff has no assignee, so
+      // explicitly alert the account owner to triage it instead of leaving
+      // the paused conversation invisible until somebody checks the inbox.
+      if (!assignedAgentId || route?.fellBack) {
+        await notifyOwnerOfQueuedHandoff(db, {
+          accountId,
+          conversationId,
+          contactId,
+          summary: handoffSummary,
+          title: route?.fellBack
+            ? 'AI routing fallback needs attention'
+            : undefined,
+        })
+      }
 
       // The model may include a final customer-facing expectation before
       // the handoff sentinel. Send it after the sticky pause is persisted,
@@ -227,6 +260,112 @@ export async function dispatchInboundToAiReply(
     })
   } catch (err) {
     console.error('[ai auto-reply] dispatch failed:', err)
+  }
+}
+
+async function notifyOwnerOfQueuedHandoff(
+  db: ReturnType<typeof supabaseAdmin>,
+  args: {
+    accountId: string
+    conversationId: string
+    contactId: string
+    summary: string
+    title?: string
+  },
+): Promise<void> {
+  try {
+    const { data: account, error: accountErr } = await db
+      .from('accounts')
+      .select('owner_user_id')
+      .eq('id', args.accountId)
+      .maybeSingle()
+    if (accountErr || !account?.owner_user_id) {
+      console.warn(
+        '[ai auto-reply] could not resolve coordinator for queued handoff:',
+        accountErr,
+      )
+      return
+    }
+
+    const { error: notificationErr } = await db.from('notifications').insert({
+      account_id: args.accountId,
+      user_id: account.owner_user_id,
+      type: 'conversation_assigned',
+      conversation_id: args.conversationId,
+      contact_id: args.contactId,
+      actor_user_id: null,
+      title: args.title ?? 'AI handoff needs assignment',
+      body: args.summary,
+    })
+    if (notificationErr) {
+      console.warn(
+        '[ai auto-reply] failed to notify coordinator of queued handoff:',
+        notificationErr,
+      )
+    }
+  } catch (err) {
+    console.warn(
+      '[ai auto-reply] failed to notify coordinator of queued handoff:',
+      err,
+    )
+  }
+}
+
+async function resolveAutomaticRoute(
+  db: ReturnType<typeof supabaseAdmin>,
+  accountId: string,
+  config: AiConfig,
+  routingKey: string | undefined,
+): Promise<{ targetUserId?: string; fellBack: boolean; audit: string }> {
+  if (!routingKey) {
+    return {
+      fellBack: true,
+      audit: 'no destination was selected; used the configured fallback.',
+    }
+  }
+  const rule = config.autoAssignmentRules.find((item) => item.key === routingKey)
+  if (!rule) {
+    return {
+      fellBack: true,
+      audit: `the model returned unknown route “${routingKey}”; used the configured fallback.`,
+    }
+  }
+
+  const { data: member } = await db
+    .from('profiles')
+    .select('user_id, full_name')
+    .eq('account_id', accountId)
+    .eq('user_id', rule.targetUserId)
+    .maybeSingle()
+  if (!member) return unavailableRoute(rule, 'is no longer an account member')
+
+  const { data: presence } = await db
+    .from('member_presence')
+    .select('status, last_seen_at')
+    .eq('account_id', accountId)
+    .eq('user_id', rule.targetUserId)
+    .maybeSingle()
+  const status = derivePresence(
+    presence?.status,
+    presence?.last_seen_at,
+    Date.now(),
+  )
+  if (status !== 'online') return unavailableRoute(rule, `is ${status}`)
+
+  return {
+    targetUserId: rule.targetUserId,
+    fellBack: false,
+    audit: `selected ${rule.label} (${rule.description}) and assigned ${member.full_name}.`,
+  }
+}
+
+function unavailableRoute(
+  rule: AiRoutingRule,
+  reason: string,
+): { fellBack: true; audit: string } {
+  return {
+    fellBack: true,
+    audit: `selected ${rule.label} (${rule.description}), but its member ${reason}; used the configured fallback.`,
   }
 }
 

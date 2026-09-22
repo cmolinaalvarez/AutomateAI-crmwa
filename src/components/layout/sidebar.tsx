@@ -6,7 +6,8 @@ import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useTotalUnread } from "@/hooks/use-total-unread";
-import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
+import { usePendingAiHandoffs } from "@/hooks/use-pending-ai-handoffs";
+import { useAssignedConversations } from "@/hooks/use-assigned-conversations";
 import {
   Bell,
   Bot,
@@ -77,6 +78,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface NavItem {
   href: string;
@@ -116,9 +123,10 @@ import { useTranslations } from "next-intl";
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const t = useTranslations("Sidebar");
   const pathname = usePathname();
-  const { profile, profileLoading, account, accountRole, signOut } = useAuth();
+  const { user, profile, profileLoading, account, accountId, accountRole, signOut } = useAuth();
   const totalUnread = useTotalUnread();
-  const unreadNotifications = useUnreadNotifications();
+  const pendingAiHandoffs = usePendingAiHandoffs(accountId);
+  const assignedConversations = useAssignedConversations(accountId, user?.id);
   // Only surface the account-name strip when it actually carries
   // information. A solo user's personal account is named after them
   // (the 017 signup trigger seeds it from `full_name`), so showing it
@@ -216,12 +224,11 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               const showUnreadDot =
                 item.href === "/inbox" && totalUnread > 0 && !isActive;
 
-              // Unlike the inbox dot, the notifications count stays visible
-              // even while the page is active — it reflects unread state
-              // (cleared by marking notifications read), not "currently
-              // viewing this section".
-              const showNotificationBadge =
-                item.href === "/notifications" && unreadNotifications > 0;
+              // Always show the unresolved AI handoff count, including zero.
+              // Reading a notification does not clear operational work; this
+              // number only drops after the conversation is assigned or the
+              // bot is explicitly resumed.
+              const showNotificationBadge = item.href === "/notifications";
 
               return (
                 <li key={item.href}>
@@ -255,12 +262,50 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                       </span>
                     )}
                     {showNotificationBadge && (
-                      <span
-                        aria-label={t("unreadNotifications", { count: unreadNotifications })}
-                        className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground"
-                      >
-                        {unreadNotifications > 9 ? "9+" : unreadNotifications}
-                      </span>
+                      <TooltipProvider>
+                        <span className="flex items-center gap-1">
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <span
+                                  aria-label={t("pendingAiHandoffs", { count: pendingAiHandoffs })}
+                                  className={cn(
+                                    "flex h-5 min-w-5 items-center justify-center rounded-full border px-1 text-[10px] font-semibold tabular-nums",
+                                    pendingAiHandoffs > 0
+                                      ? "border-amber-500/50 bg-amber-500/15 text-amber-500"
+                                      : "border-border bg-muted text-muted-foreground",
+                                  )}
+                                />
+                              }
+                            >
+                              {pendingAiHandoffs > 99 ? "99+" : pendingAiHandoffs}
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              {t("pendingAiHandoffs", { count: pendingAiHandoffs })}
+                            </TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <span
+                                  aria-label={t("assignedConversations", { count: assignedConversations })}
+                                  className={cn(
+                                    "flex h-5 min-w-5 items-center justify-center rounded-full border px-1 text-[10px] font-semibold tabular-nums",
+                                    assignedConversations > 0
+                                      ? "border-primary bg-primary text-primary-foreground"
+                                      : "border-border bg-muted text-muted-foreground",
+                                  )}
+                                />
+                              }
+                            >
+                              {assignedConversations > 99 ? "99+" : assignedConversations}
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              {t("assignedConversations", { count: assignedConversations })}
+                            </TooltipContent>
+                          </Tooltip>
+                        </span>
+                      </TooltipProvider>
                     )}
                   </Link>
                 </li>

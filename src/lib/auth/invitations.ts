@@ -72,6 +72,36 @@ export function inviteUrl(token: string, baseUrl: string): string {
   return `${trimmed}/join/${token}`;
 }
 
+/** Resolve the public origin from a browser request, respecting an optional host allow-list. */
+export function inviteRequestOrigin(
+  request: Request,
+  allowedHosts: readonly string[] | null = null,
+): string | null {
+  const isAllowed = (host: string) => {
+    if (!allowedHosts) return true;
+    const hostname = host.split(":")[0].toLowerCase();
+    return allowedHosts.includes(hostname);
+  };
+  const forwardedHost = request.headers
+    .get("x-forwarded-host")
+    ?.split(",")[0]
+    ?.trim();
+  const forwardedProto = request.headers
+    .get("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim();
+  if (forwardedHost && isAllowed(forwardedHost)) {
+    return `${forwardedProto || "https"}://${forwardedHost}`;
+  }
+
+  const host = request.headers.get("host")?.trim();
+  if (host && isAllowed(host)) {
+    return `${new URL(request.url).protocol}//${host}`;
+  }
+
+  return null;
+}
+
 /**
  * Compute the `expires_at` timestamp for a new invite.
  *

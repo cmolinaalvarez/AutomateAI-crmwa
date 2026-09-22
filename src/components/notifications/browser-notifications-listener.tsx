@@ -1,6 +1,7 @@
 "use client";
 
 import { useBrowserNotifications } from "@/hooks/use-browser-notifications";
+import { useRealtimeAssignmentAlerts } from "@/hooks/use-realtime-assignment-alerts";
 
 /**
  * Headless. Mount ONCE per signed-in dashboard tab (the dashboard
@@ -9,5 +10,6 @@ import { useBrowserNotifications } from "@/hooks/use-browser-notifications";
  */
 export function BrowserNotificationsListener() {
   useBrowserNotifications();
+  useRealtimeAssignmentAlerts();
   return null;
 }

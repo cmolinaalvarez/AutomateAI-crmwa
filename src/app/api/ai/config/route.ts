@@ -8,7 +8,12 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
 import { validateAiCredentials } from '@/lib/ai/validate'
 import { embedTexts } from '@/lib/ai/embeddings'
-import { AiError, AI_PROVIDERS, type AiProvider } from '@/lib/ai/types'
+import {
+  AiError,
+  AI_PROVIDERS,
+  type AiProvider,
+  type AiRoutingRule,
+} from '@/lib/ai/types'
 
 function bad(message: string) {
   return NextResponse.json({ error: message }, { status: 400 })
@@ -30,7 +35,7 @@ export async function GET() {
       // `api_key` is selected only to derive `has_key` — it is stripped
       // out below and never returned to the client.
       .select(
-        'provider, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, api_key, embeddings_api_key',
+        'provider, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, auto_assignment_enabled, auto_assignment_rules, api_key, embeddings_api_key',
       )
       .eq('account_id', accountId)
       .maybeSingle()
@@ -114,6 +119,41 @@ export async function POST(request: Request) {
       handoffAgentId = rawHandoff
     }
 
+    const autoAssignmentEnabled = body.auto_assignment_enabled === true
+    const rulesProvided = 'auto_assignment_rules' in body
+    const rawRules = rulesProvided ? body.auto_assignment_rules : []
+    if (!Array.isArray(rawRules) || rawRules.length > 20) {
+      return bad('auto_assignment_rules must be an array with at most 20 rules')
+    }
+    const autoAssignmentRules: AiRoutingRule[] = []
+    const seenKeys = new Set<string>()
+    for (const value of rawRules) {
+      if (!value || typeof value !== 'object') return bad('Invalid routing rule')
+      const key = typeof value.key === 'string' ? value.key.trim().toLowerCase() : ''
+      const label = typeof value.label === 'string' ? value.label.trim() : ''
+      const description = typeof value.description === 'string' ? value.description.trim() : ''
+      const targetUserId = typeof value.targetUserId === 'string' ? value.targetUserId.trim() : ''
+      if (!/^[a-z0-9][a-z0-9_-]{0,39}$/.test(key) || seenKeys.has(key)) {
+        return bad('Each routing rule needs a unique key using letters, numbers, _ or -')
+      }
+      if (!label || label.length > 80 || !description || description.length > 300 || !targetUserId) {
+        return bad('Each routing rule needs a label, description, and target member')
+      }
+      seenKeys.add(key)
+      autoAssignmentRules.push({ key, label, description, targetUserId })
+    }
+    if (autoAssignmentRules.length > 0) {
+      const targetIds = [...new Set(autoAssignmentRules.map((rule) => rule.targetUserId))]
+      const { data: targets } = await supabase
+        .from('profiles')
+        .select('user_id')
+        .eq('account_id', accountId)
+        .in('user_id', targetIds)
+      if (!targets || targets.length !== targetIds.length) {
+        return bad('Every automatic routing target must be a member of this account')
+      }
+    }
+
     const rawKey = typeof body.api_key === 'string' ? body.api_key.trim() : ''
 
     // Embeddings key (optional, for semantic KB search): a non-empty
@@ -166,6 +206,8 @@ export async function POST(request: Request) {
           autoReplyEnabled,
           autoReplyMaxPerConversation: maxPer,
           handoffAgentId: null,
+          autoAssignmentEnabled: false,
+          autoAssignmentRules: [],
           embeddingsApiKey: null,
         })
       } catch (err) {
@@ -205,10 +247,12 @@ export async function POST(request: Request) {
       is_active: isActive,
       auto_reply_enabled: autoReplyEnabled,
       auto_reply_max_per_conversation: maxPer,
+      auto_assignment_enabled: autoAssignmentEnabled,
     }
     // Only touch the handoff target when the form actually sent the field,
     // so a partial save (e.g. flipping a toggle) doesn't wipe it.
     if (handoffProvided) shared.handoff_agent_id = handoffAgentId
+    if (rulesProvided) shared.auto_assignment_rules = autoAssignmentRules
     if (rawEmbeddingsKey) {
       shared.embeddings_api_key = encrypt(rawEmbeddingsKey)
     } else if (clearEmbeddingsKey) {

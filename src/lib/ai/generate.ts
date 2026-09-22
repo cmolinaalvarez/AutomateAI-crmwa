@@ -70,7 +70,18 @@ export function parseGeneration(
   raw: string,
   usage: AiUsage | null = null,
 ): GenerateResult {
-  const handoff = raw.includes(HANDOFF_SENTINEL)
-  const text = raw.split(HANDOFF_SENTINEL).join('').trim()
-  return { text, handoff, usage }
+  const routePattern = /\[\[HANDOFF:([a-z0-9_-]+)\]\]/i
+  const routeMatch = raw.match(routePattern)
+  const handoff = raw.includes(HANDOFF_SENTINEL) || routeMatch !== null
+  const text = raw
+    .replace(routePattern, '')
+    .split(HANDOFF_SENTINEL)
+    .join('')
+    .trim()
+  return {
+    text,
+    handoff,
+    ...(routeMatch?.[1] ? { routingKey: routeMatch[1].toLowerCase() } : {}),
+    usage,
+  }
 }

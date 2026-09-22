@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Loader2, Sparkles, CheckCircle2, Trash2, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Sparkles, CheckCircle2, Trash2, Eye, EyeOff, Plus } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
 import { Button } from '@/components/ui/button';
@@ -27,7 +27,7 @@ import {
 import { SettingsPanelHead } from './settings-panel-head';
 import { AiKnowledgeCard } from './ai-knowledge';
 import { AI_PROVIDER_DEFAULT_MODEL } from '@/lib/ai/defaults';
-import type { AiProvider } from '@/lib/ai/types';
+import type { AiProvider, AiRoutingRule } from '@/lib/ai/types';
 import type { AccountMember } from '@/types';
 import { fetchAccountMembers, memberLabel } from '@/lib/account/members';
 import { useTranslations } from 'next-intl';
@@ -78,6 +78,8 @@ export function AiConfig() {
   const [maxPerConversation, setMaxPerConversation] = useState(3);
   // Empty string = leave unassigned (shared queue).
   const [handoffAgentId, setHandoffAgentId] = useState('');
+  const [autoAssignmentEnabled, setAutoAssignmentEnabled] = useState(false);
+  const [autoAssignmentRules, setAutoAssignmentRules] = useState<AiRoutingRule[]>([]);
   const [members, setMembers] = useState<AccountMember[]>([]);
 
   // Guard keyed on the account (not a bare boolean) so an in-place
@@ -104,6 +106,8 @@ export function AiConfig() {
         setAutoReplyEnabled(data.auto_reply_enabled);
         setMaxPerConversation(data.auto_reply_max_per_conversation ?? 3);
         setHandoffAgentId(data.handoff_agent_id ?? '');
+        setAutoAssignmentEnabled(data.auto_assignment_enabled ?? false);
+        setAutoAssignmentRules(data.auto_assignment_rules ?? []);
         setHasStoredKey(Boolean(data.has_key));
         setApiKey(data.has_key ? MASKED_KEY : '');
         setKeyEdited(false);
@@ -155,6 +159,8 @@ export function AiConfig() {
     auto_reply_enabled: autoReplyEnabled,
     auto_reply_max_per_conversation: maxPerConversation,
     handoff_agent_id: handoffAgentId || null,
+    auto_assignment_enabled: autoAssignmentEnabled,
+    auto_assignment_rules: autoAssignmentRules,
   });
 
   const handleTest = async () => {
@@ -223,6 +229,8 @@ export function AiConfig() {
         setAutoReplyEnabled(false);
         setSystemPrompt('');
         setHandoffAgentId('');
+        setAutoAssignmentEnabled(false);
+        setAutoAssignmentRules([]);
       } else {
         const data = await res.json();
         toast.error(data.error ?? t('removeFailed'));
@@ -491,6 +499,123 @@ export function AiConfig() {
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="flex items-center justify-between gap-4 rounded-md border border-border p-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  {t('autoAssignment')}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t('autoAssignmentDesc')}
+                </p>
+              </div>
+              <Switch
+                checked={autoAssignmentEnabled}
+                onCheckedChange={setAutoAssignmentEnabled}
+                disabled={disabled || !autoReplyEnabled}
+              />
+            </div>
+
+            {autoAssignmentEnabled && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <Label>{t('routingRules')}</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t('routingRulesDesc')}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAutoAssignmentRules((rules) => [
+                      ...rules,
+                      {
+                        key: `route_${Date.now().toString(36)}_${rules.length}`,
+                        label: '',
+                        description: '',
+                        targetUserId: '',
+                      },
+                    ])}
+                    disabled={disabled || autoAssignmentRules.length >= 20}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    {t('addRoutingRule')}
+                  </Button>
+                </div>
+
+                {autoAssignmentRules.map((rule, index) => (
+                  <div
+                    key={rule.key}
+                    className="grid gap-3 border-t border-border pt-4 sm:grid-cols-[1fr_1.5fr_1fr_auto]"
+                  >
+                    <div className="space-y-2">
+                      <Label htmlFor={`routing-label-${rule.key}`}>
+                        {t('routingArea')}
+                      </Label>
+                      <Input
+                        id={`routing-label-${rule.key}`}
+                        value={rule.label}
+                        onChange={(event) => setAutoAssignmentRules((rules) =>
+                          rules.map((item, itemIndex) => itemIndex === index
+                            ? { ...item, label: event.target.value }
+                            : item))}
+                        placeholder={t('routingAreaPlaceholder')}
+                        disabled={disabled}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor={`routing-intent-${rule.key}`}>
+                        {t('routingIntent')}
+                      </Label>
+                      <Input
+                        id={`routing-intent-${rule.key}`}
+                        value={rule.description}
+                        onChange={(event) => setAutoAssignmentRules((rules) =>
+                          rules.map((item, itemIndex) => itemIndex === index
+                            ? { ...item, description: event.target.value }
+                            : item))}
+                        placeholder={t('routingIntentPlaceholder')}
+                        disabled={disabled}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{t('routingMember')}</Label>
+                      <Select
+                        value={rule.targetUserId}
+                        onValueChange={(value) => setAutoAssignmentRules((rules) =>
+                          rules.map((item, itemIndex) => itemIndex === index
+                            ? { ...item, targetUserId: value ?? '' }
+                            : item))}
+                        disabled={disabled}
+                      >
+                        <SelectTrigger><SelectValue placeholder={t('selectMember')} /></SelectTrigger>
+                        <SelectContent>
+                          {members.map((member) => (
+                            <SelectItem key={member.user_id} value={member.user_id}>
+                              {memberLabel(member)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="self-end text-destructive hover:text-destructive"
+                      onClick={() => setAutoAssignmentRules((rules) =>
+                        rules.filter((_, itemIndex) => itemIndex !== index))}
+                      disabled={disabled}
+                      aria-label={t('removeRoutingRule')}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 

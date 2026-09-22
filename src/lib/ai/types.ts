@@ -11,6 +11,13 @@ export type AiProvider = 'openai' | 'anthropic' | 'openrouter' | 'gemini'
 /** Every valid `AiProvider` value, for validation and UI iteration. */
 export const AI_PROVIDERS: readonly AiProvider[] = ['openai', 'anthropic', 'openrouter', 'gemini']
 
+export interface AiRoutingRule {
+  key: string
+  label: string
+  description: string
+  targetUserId: string
+}
+
 /**
  * Account AI setup, decrypted and ready to use. Produced by
  * `loadAiConfig` — `apiKey` is the plaintext BYO provider key
@@ -28,6 +35,8 @@ export interface AiConfig {
    *  agent's `auth.users.id`, or null to leave it unassigned (drop into
    *  the shared queue). */
   handoffAgentId: string | null
+  autoAssignmentEnabled: boolean
+  autoAssignmentRules: AiRoutingRule[]
   /** Optional OpenAI-compatible key for embeddings. When set, the
    *  knowledge base is embedded and semantic retrieval turns on; when
    *  null, retrieval falls back to lexical full-text search. */
@@ -63,6 +72,8 @@ export interface GenerateResult {
   text: string
   /** True when the model asked to hand off to a human (auto-reply mode). */
   handoff: boolean
+  /** Optional configured routing key suggested by the model. */
+  routingKey?: string
   /** Provider token usage for this call, or null when unavailable. */
   usage: AiUsage | null
 }

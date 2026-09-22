@@ -24,6 +24,7 @@ import {
   clampExpiryDays,
   generateInviteToken,
   inviteExpiresAt,
+  inviteRequestOrigin,
   inviteUrl,
 } from "@/lib/auth/invitations";
 import { isAccountRole } from "@/lib/auth/roles";
@@ -37,19 +38,17 @@ import {
 //
 // Resolution order, first match wins:
 //
-//   1. `NEXT_PUBLIC_SITE_URL` — admin's explicit config. Trumps
-//      everything; if you set this, that's where links point.
-//   2. `X-Forwarded-Host` (+ `X-Forwarded-Proto`) — set by every
+//   1. `X-Forwarded-Host` (+ `X-Forwarded-Proto`) — set by every
 //      reverse proxy in front of the app: Hostinger Managed
 //      Node.js, Vercel, Cloudflare, nginx. This is what makes
 //      invite links Just Work in production without forcing the
 //      operator to set an env var.
-//   3. `Host` header + the protocol the request arrived on —
+//   2. `Host` header + the protocol the request arrived on —
 //      bare deployments without a proxy.
-//   4. Last-resort marketing-site fallback. Only hit if the
-//      request has no Host header at all, which is essentially
-//      impossible from a real browser. Logs a warning so the
-//      operator can spot the misconfig.
+//   3. `NEXT_PUBLIC_SITE_URL` — fallback for jobs without an incoming
+//      request origin. It must never replace a valid browser origin;
+//      otherwise an unchanged example value produces broken links.
+//   4. Last-resort marketing-site fallback.
 //
 // Defense-in-depth: `ALLOWED_INVITE_HOSTS`
 //
@@ -83,48 +82,23 @@ function parseAllowedHosts(): readonly string[] | null {
   return list.length > 0 ? list : null;
 }
 
-function isHostAllowed(
-  hostname: string,
-  allowList: readonly string[] | null,
-): boolean {
-  if (!allowList) return true; // No allow-list → permissive (legacy behavior).
-  return allowList.includes(hostname.toLowerCase());
-}
-
 function getBaseUrl(request: Request): string {
+  const allowList = parseAllowedHosts();
+  const requestOrigin = inviteRequestOrigin(request, allowList);
+  if (requestOrigin) return requestOrigin;
+
   const explicit = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   if (explicit) return explicit.replace(/\/+$/, "");
-
-  const allowList = parseAllowedHosts();
-  const forwardedHost = request.headers
-    .get("x-forwarded-host")
-    ?.split(",")[0]
-    ?.trim();
-  const forwardedProto = request.headers
-    .get("x-forwarded-proto")
-    ?.split(",")[0]
-    ?.trim();
-  if (forwardedHost && isHostAllowed(forwardedHost, allowList)) {
-    return `${forwardedProto || "https"}://${forwardedHost}`;
-  }
-
-  const host = request.headers.get("host")?.trim();
-  if (host && isHostAllowed(host, allowList)) {
-    // The protocol on `request.url` is whatever the framework saw —
-    // reliable for bare deployments where no proxy is rewriting it.
-    const reqProto = new URL(request.url).protocol.replace(":", "");
-    return `${reqProto}://${host}`;
-  }
 
   // We fall through here when EITHER no Host header was present at
   // all (essentially impossible from a real browser) OR an
   // ALLOWED_INVITE_HOSTS list was set and neither candidate matched
   // it. The warning is the operator's signal that someone is
   // probing the API with a spoofed Host header.
-  if (allowList && (forwardedHost || host)) {
+  if (allowList) {
     console.warn(
       "[POST /api/account/invitations] rejected non-allow-listed host:",
-      { forwardedHost, host, allowList },
+      { allowList },
     );
   } else {
     console.warn(

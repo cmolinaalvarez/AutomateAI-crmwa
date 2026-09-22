@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { decrypt } from '@/lib/whatsapp/encryption'
-import type { AiConfig } from './types'
+import type { AiConfig, AiRoutingRule } from './types'
 
 interface AiConfigRow {
   provider: 'openai' | 'anthropic'
@@ -11,11 +11,13 @@ interface AiConfigRow {
   auto_reply_enabled: boolean
   auto_reply_max_per_conversation: number
   handoff_agent_id: string | null
+  auto_assignment_enabled: boolean
+  auto_assignment_rules: unknown
   embeddings_api_key: string | null
 }
 
 const CONFIG_COLUMNS =
-  'provider, model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key'
+  'provider, model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, auto_assignment_enabled, auto_assignment_rules, embeddings_api_key'
 
 /**
  * Load and decrypt the account's AI config for *use* (draft or
@@ -78,6 +80,10 @@ export async function loadAiConfig(
     autoReplyEnabled: row.auto_reply_enabled,
     autoReplyMaxPerConversation: row.auto_reply_max_per_conversation,
     handoffAgentId: row.handoff_agent_id,
+    autoAssignmentEnabled: row.auto_assignment_enabled === true,
+    autoAssignmentRules: Array.isArray(row.auto_assignment_rules)
+      ? row.auto_assignment_rules as AiRoutingRule[]
+      : [],
     embeddingsApiKey,
   }
 }

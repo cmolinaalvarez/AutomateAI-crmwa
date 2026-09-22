@@ -5,6 +5,7 @@ import {
   generateInviteToken,
   hashInviteToken,
   inviteExpiresAt,
+  inviteRequestOrigin,
   inviteUrl,
   MAX_INVITE_EXPIRY_DAYS,
 } from "./invitations";
@@ -78,6 +79,36 @@ describe("inviteUrl", () => {
     // The token may contain `-` and `_`. Both are URL-safe; the
     // function must NOT percent-encode them.
     expect(inviteUrl("a-b_c", "https://x")).toBe("https://x/join/a-b_c");
+  });
+});
+
+describe("inviteRequestOrigin", () => {
+  it("uses the reverse proxy origin when present", () => {
+    const request = new Request("http://internal:3000/api/account/invitations", {
+      headers: {
+        host: "internal:3000",
+        "x-forwarded-host": "crm.example.org",
+        "x-forwarded-proto": "https",
+      },
+    });
+
+    expect(inviteRequestOrigin(request)).toBe("https://crm.example.org");
+  });
+
+  it("uses the direct request host when there is no proxy", () => {
+    const request = new Request("http://localhost:3000/api/account/invitations", {
+      headers: { host: "localhost:3000" },
+    });
+
+    expect(inviteRequestOrigin(request)).toBe("http://localhost:3000");
+  });
+
+  it("rejects origins outside the configured allow-list", () => {
+    const request = new Request("https://internal/api/account/invitations", {
+      headers: { host: "untrusted.example" },
+    });
+
+    expect(inviteRequestOrigin(request, ["crm.example.org"])).toBeNull();
   });
 });
 
