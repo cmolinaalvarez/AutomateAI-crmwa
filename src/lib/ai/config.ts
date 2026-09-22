@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { decrypt } from '@/lib/whatsapp/encryption'
-import type { AiConfig, AiRoutingRule } from './types'
+import type { AiAudioMode, AiConfig, AiRoutingRule } from './types'
 
 interface AiConfigRow {
   provider: 'openai' | 'anthropic'
@@ -9,6 +9,7 @@ interface AiConfigRow {
   system_prompt: string | null
   is_active: boolean
   auto_reply_enabled: boolean
+  audio_mode: AiAudioMode
   auto_reply_max_per_conversation: number
   handoff_agent_id: string | null
   auto_assignment_enabled: boolean
@@ -17,7 +18,7 @@ interface AiConfigRow {
 }
 
 const CONFIG_COLUMNS =
-  'provider, model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, auto_assignment_enabled, auto_assignment_rules, embeddings_api_key'
+  'provider, model, api_key, system_prompt, is_active, auto_reply_enabled, audio_mode, auto_reply_max_per_conversation, handoff_agent_id, auto_assignment_enabled, auto_assignment_rules, embeddings_api_key'
 
 /**
  * Load and decrypt the account's AI config for *use* (draft or
@@ -78,6 +79,7 @@ export async function loadAiConfig(
     systemPrompt: row.system_prompt,
     isActive: row.is_active,
     autoReplyEnabled: row.auto_reply_enabled,
+    audioMode: row.audio_mode ?? 'text_only',
     autoReplyMaxPerConversation: row.auto_reply_max_per_conversation,
     handoffAgentId: row.handoff_agent_id,
     autoAssignmentEnabled: row.auto_assignment_enabled === true,

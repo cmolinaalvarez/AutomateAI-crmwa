@@ -183,6 +183,10 @@ interface SendMediaEngineArgs {
   caption?: string
   /** Document-only; ignored by Meta for image/video. */
   filename?: string
+  /** Text represented by an audio reply, retained for context/audit. */
+  contentText?: string
+  mediaType?: string
+  aiGenerated?: boolean
 }
 
 /**
@@ -268,9 +272,12 @@ export async function engineSendMedia(
     conversation_id: args.conversationId,
     sender_type: 'bot',
     content_type: args.kind,
-    content_text: args.caption ?? null,
+    content_text: args.contentText ?? args.caption ?? null,
+    media_url: args.link,
+    media_type: args.mediaType ?? null,
     message_id: waMessageId,
     status: 'sent',
+    ai_generated: args.aiGenerated ?? false,
   })
   if (msgErr) {
     throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
@@ -279,7 +286,7 @@ export async function engineSendMedia(
   await db
     .from('conversations')
     .update({
-      last_message_text: preview,
+      last_message_text: args.contentText?.trim() || preview,
       last_message_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
@@ -440,20 +447,20 @@ async function sendInteractiveViaMeta(
   const interactivePayload: InteractiveMessagePayload =
     input.kind === 'buttons'
       ? {
-          kind: 'buttons',
-          body: input.bodyText,
-          header: input.headerText,
-          footer: input.footerText,
-          buttons: input.buttons,
-        }
+        kind: 'buttons',
+        body: input.bodyText,
+        header: input.headerText,
+        footer: input.footerText,
+        buttons: input.buttons,
+      }
       : {
-          kind: 'list',
-          body: input.bodyText,
-          header: input.headerText,
-          footer: input.footerText,
-          button_label: input.buttonLabel,
-          sections: input.sections,
-        }
+        kind: 'list',
+        body: input.bodyText,
+        header: input.headerText,
+        footer: input.footerText,
+        button_label: input.buttonLabel,
+        sections: input.sections,
+      }
 
   const { error: msgErr } = await db.from('messages').insert({
     conversation_id: input.conversationId,

@@ -8,6 +8,7 @@ import { buildHandoffSummary } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import {
+  engineSendMedia,
   engineSendText,
   loadAccountMetaCredentials,
 } from '@/lib/flows/meta-send'
@@ -15,6 +16,13 @@ import { sendTypingIndicator } from '@/lib/whatsapp/meta-api'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { derivePresence } from '@/lib/presence'
 import type { AiConfig, AiRoutingRule } from './types'
+import {
+  audioServiceApiKey,
+  FIRST_AUDIO_REMINDER,
+  publishGeneratedSpeech,
+  synthesizeLatinFemaleSpeech,
+  transcribeWhatsAppAudio,
+} from './audio'
 
 interface DispatchArgs {
   /** Tenancy key — drives config, contact, and whatsapp_config lookups. */
@@ -28,6 +36,12 @@ interface DispatchArgs {
    *  a typing indicator (which also marks it read) is shown while the
    *  reply is generated. Optional so older callers keep working. */
   inboundMessageId?: string
+  /** Content type of the inbound that triggered this run. */
+  inboundContentType?: string
+  /** Meta media id used to download and transcribe an inbound voice note. */
+  inboundMediaId?: string
+  /** True when this is the conversation's first customer message. */
+  inboundIsFirstMessage?: boolean
 }
 
 /**
@@ -58,6 +72,9 @@ export async function dispatchInboundToAiReply(
     contactId,
     configOwnerUserId,
     inboundMessageId,
+    inboundContentType,
+    inboundMediaId,
+    inboundIsFirstMessage,
   } = args
 
   try {
@@ -65,6 +82,14 @@ export async function dispatchInboundToAiReply(
 
     const config = await loadAiConfig(db, accountId)
     if (!config || !config.autoReplyEnabled) return
+    const isAudioInbound = inboundContentType === 'audio'
+    if (isAudioInbound && config.audioMode === 'text_only') return
+    if (
+      isAudioInbound &&
+      config.audioMode === 'first_audio' &&
+      !inboundIsFirstMessage
+    ) return
+    if (isAudioInbound && !inboundMediaId) return
 
     // Deterministic, user-configured responders win over the LLM — the
     // caller already excludes messages a Flow consumed. Message-level
@@ -96,7 +121,32 @@ export async function dispatchInboundToAiReply(
     // below (this read can race a concurrent inbound).
     if (conv.ai_reply_count >= config.autoReplyMaxPerConversation) return
 
-    const messages = await buildConversationContext(db, conversationId)
+    if (isAudioInbound) {
+      const audioKey = audioServiceApiKey(config)
+      const { accessToken } = await loadAccountMetaCredentials(db, accountId)
+      const transcript = await transcribeWhatsAppAudio({
+        apiKey: audioKey,
+        mediaId: inboundMediaId!,
+        whatsappAccessToken: accessToken,
+      })
+      await db
+        .from('messages')
+        .update({ content_text: transcript })
+        .eq('conversation_id', conversationId)
+        .eq('message_id', inboundMessageId)
+      await db
+        .from('conversations')
+        .update({ last_message_text: transcript })
+        .eq('id', conversationId)
+        .eq('account_id', accountId)
+    }
+
+    const messages = await buildConversationContext(
+      db,
+      conversationId,
+      undefined,
+      config.audioMode !== 'text_only',
+    )
     if (messages.length === 0) return
 
     // Account-wide throttle on the shared BYO key. The per-conversation
@@ -215,14 +265,17 @@ export async function dispatchInboundToAiReply(
       // The model may include a final customer-facing expectation before
       // the handoff sentinel. Send it after the sticky pause is persisted,
       // so a delivery failure can never leave the bot active on this thread.
-      if (handoff && text) {
-        await engineSendText({
+      if (
+        (handoff && text) ||
+        (isAudioInbound && config.audioMode === 'first_audio')
+      ) {
+        await sendAiResponse(db, config, {
           accountId,
           userId: configOwnerUserId,
           conversationId,
           contactId,
-          text,
-          aiGenerated: true,
+          text: text ?? '',
+          audio: isAudioInbound,
         })
       }
       return
@@ -250,16 +303,64 @@ export async function dispatchInboundToAiReply(
     }
     if (claimed !== true) return // lost the per-conversation cap race
 
-    await engineSendText({
+    await sendAiResponse(db, config, {
       accountId,
       userId: configOwnerUserId,
       conversationId,
       contactId,
       text,
-      aiGenerated: true,
+      audio: isAudioInbound,
     })
   } catch (err) {
     console.error('[ai auto-reply] dispatch failed:', err)
+  }
+}
+
+async function sendAiResponse(
+  db: ReturnType<typeof supabaseAdmin>,
+  config: AiConfig,
+  args: {
+    accountId: string
+    userId: string
+    conversationId: string
+    contactId: string
+    text: string
+    audio: boolean
+  },
+): Promise<void> {
+  if (!args.audio) {
+    await engineSendText({ ...args, aiGenerated: true })
+    return
+  }
+
+  const spokenText = config.audioMode === 'first_audio'
+    ? [args.text, FIRST_AUDIO_REMINDER].filter(Boolean).join('\n\n')
+    : args.text
+  try {
+    const apiKey = audioServiceApiKey(config)
+    const bytes = await synthesizeLatinFemaleSpeech(apiKey, spokenText)
+    const link = await publishGeneratedSpeech(db, args.accountId, bytes)
+    await engineSendMedia({
+      accountId: args.accountId,
+      userId: args.userId,
+      conversationId: args.conversationId,
+      contactId: args.contactId,
+      kind: 'audio',
+      link,
+      contentText: spokenText,
+      mediaType: 'audio/mpeg',
+      aiGenerated: true,
+    })
+  } catch (error) {
+    console.warn('[ai auto-reply] voice response failed; sending text:', error)
+    await engineSendText({
+      accountId: args.accountId,
+      userId: args.userId,
+      conversationId: args.conversationId,
+      contactId: args.contactId,
+      text: spokenText,
+      aiGenerated: true,
+    })
   }
 }
 

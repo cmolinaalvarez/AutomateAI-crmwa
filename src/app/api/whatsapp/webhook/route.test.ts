@@ -168,32 +168,32 @@ vi.mock('@supabase/supabase-js', () => ({
             select: (_columns: string, options?: { head?: boolean }) =>
               options?.head
                 ? // priorCustomerMsgCount: select('id',{count,head}).eq().eq()
-                  {
+                {
+                  eq: () => ({
+                    eq: () =>
+                      Promise.resolve({
+                        count: h.state.priorCustomerMsgCount,
+                        error: null,
+                      }),
+                  }),
+                }
+                : // lookupInternalIdByMetaId: select('id').eq().eq().maybeSingle()
+                // handleStatusUpdate fan-out: select().eq().limit().maybeSingle()
+                {
+                  eq: () => ({
                     eq: () => ({
-                      eq: () =>
+                      maybeSingle: () =>
                         Promise.resolve({
-                          count: h.state.priorCustomerMsgCount,
+                          data: h.state.replyContextParent,
                           error: null,
                         }),
                     }),
-                  }
-                : // lookupInternalIdByMetaId: select('id').eq().eq().maybeSingle()
-                  // handleStatusUpdate fan-out: select().eq().limit().maybeSingle()
-                  {
-                    eq: () => ({
-                      eq: () => ({
-                        maybeSingle: () =>
-                          Promise.resolve({
-                            data: h.state.replyContextParent,
-                            error: null,
-                          }),
-                      }),
-                      limit: () => ({
-                        maybeSingle: () =>
-                          Promise.resolve({ data: null, error: null }),
-                      }),
+                    limit: () => ({
+                      maybeSingle: () =>
+                        Promise.resolve({ data: null, error: null }),
                     }),
-                  },
+                  }),
+                },
             // Status webhook mirror (#535): update(...).eq('message_id', ...)
             update: (patch: Record<string, unknown>) => {
               h.state.messageUpdates.push(patch)
@@ -649,6 +649,30 @@ describe('inbound webhook: inbound media is mirrored (#466)', () => {
     expect(h.state.storageUploads).toHaveLength(0)
     expect(h.state.upsertCalls[0].row).toMatchObject({ media_type: null })
   })
+
+  it('passes audio-only inbound to the configured AI audio gate', async () => {
+    await runWebhook({
+      id: 'wamid.AUDIO1',
+      from: '15551230000',
+      timestamp: '1700000000',
+      type: 'audio',
+      audio: { id: 'audio-1', mime_type: 'audio/ogg; codecs=opus' },
+    })
+
+    expect(h.state.upsertCalls[0].row).toMatchObject({
+      content_type: 'audio',
+      content_text: null,
+    })
+    expect(h.dispatchInboundToAiReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conv-1',
+        inboundMessageId: 'wamid.AUDIO1',
+        inboundContentType: 'audio',
+        inboundMediaId: 'audio-1',
+        inboundIsFirstMessage: true,
+      }),
+    )
+  })
 })
 
 describe('inbound webhook: after() awaits automations (#368)', () => {
@@ -932,7 +956,7 @@ describe('status webhook: failed statuses keep Meta\'s reason (#535)', () => {
   }
 
   it('persists code, title and details on the messages row in the same update as status', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => { })
     try {
       await runStatusWebhook(FAILED_STATUS)
     } finally {
@@ -949,7 +973,7 @@ describe('status webhook: failed statuses keep Meta\'s reason (#535)', () => {
   })
 
   it('logs one warning line carrying the wamid, code and title', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => { })
     try {
       await runStatusWebhook(FAILED_STATUS)
       expect(warn).toHaveBeenCalledTimes(1)
@@ -965,7 +989,7 @@ describe('status webhook: failed statuses keep Meta\'s reason (#535)', () => {
 
   it('folds the reason into broadcast_recipients.error_message', async () => {
     h.state.broadcastRecipient = { id: 'rec-1', status: 'sent' }
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => { })
     try {
       await runStatusWebhook(FAILED_STATUS)
     } finally {
@@ -981,7 +1005,7 @@ describe('status webhook: failed statuses keep Meta\'s reason (#535)', () => {
   })
 
   it('a failed status with no errors array still flips status and stores no reason', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => { })
     try {
       await runStatusWebhook({ ...FAILED_STATUS, errors: undefined })
     } finally {
@@ -993,7 +1017,7 @@ describe('status webhook: failed statuses keep Meta\'s reason (#535)', () => {
 
   it('a plain delivered status updates only status — error columns untouched', async () => {
     h.state.broadcastRecipient = { id: 'rec-1', status: 'sent' }
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => { })
     try {
       await runStatusWebhook({
         id: 'wamid.OUT1',

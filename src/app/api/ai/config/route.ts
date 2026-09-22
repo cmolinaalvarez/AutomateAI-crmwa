@@ -10,7 +10,9 @@ import { validateAiCredentials } from '@/lib/ai/validate'
 import { embedTexts } from '@/lib/ai/embeddings'
 import {
   AiError,
+  AI_AUDIO_MODES,
   AI_PROVIDERS,
+  type AiAudioMode,
   type AiProvider,
   type AiRoutingRule,
 } from '@/lib/ai/types'
@@ -35,7 +37,7 @@ export async function GET() {
       // `api_key` is selected only to derive `has_key` — it is stripped
       // out below and never returned to the client.
       .select(
-        'provider, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, auto_assignment_enabled, auto_assignment_rules, api_key, embeddings_api_key',
+        'provider, model, system_prompt, is_active, auto_reply_enabled, audio_mode, auto_reply_max_per_conversation, handoff_agent_id, auto_assignment_enabled, auto_assignment_rules, api_key, embeddings_api_key',
       )
       .eq('account_id', accountId)
       .maybeSingle()
@@ -95,6 +97,10 @@ export async function POST(request: Request) {
         : null
     const isActive = body.is_active === true
     const autoReplyEnabled = body.auto_reply_enabled === true
+    const audioMode = (body.audio_mode ?? 'text_only') as AiAudioMode
+    if (!AI_AUDIO_MODES.includes(audioMode)) {
+      return bad(`audio_mode must be one of: ${AI_AUDIO_MODES.join(', ')}`)
+    }
 
     let maxPer = Number(body.auto_reply_max_per_conversation)
     if (!Number.isFinite(maxPer)) maxPer = 3
@@ -168,9 +174,19 @@ export async function POST(request: Request) {
     // Reuse the stored key when the form didn't send a fresh one.
     const { data: existing } = await supabase
       .from('ai_configs')
-      .select('id, provider, model, api_key')
+      .select('id, provider, model, api_key, embeddings_api_key')
       .eq('account_id', accountId)
       .maybeSingle()
+
+    const hasAudioServiceKey =
+      provider === 'openai' ||
+      Boolean(rawEmbeddingsKey) ||
+      (!clearEmbeddingsKey && Boolean(existing?.embeddings_api_key))
+    if (audioMode !== 'text_only' && !hasAudioServiceKey) {
+      return bad(
+        'Audio modes require an OpenAI services key when the chat provider is not OpenAI.',
+      )
+    }
 
     let apiKeyPlain: string
     if (rawKey) {
@@ -204,6 +220,7 @@ export async function POST(request: Request) {
           systemPrompt,
           isActive,
           autoReplyEnabled,
+          audioMode: 'text_only',
           autoReplyMaxPerConversation: maxPer,
           handoffAgentId: null,
           autoAssignmentEnabled: false,
@@ -246,6 +263,7 @@ export async function POST(request: Request) {
       system_prompt: systemPrompt,
       is_active: isActive,
       auto_reply_enabled: autoReplyEnabled,
+      audio_mode: audioMode,
       auto_reply_max_per_conversation: maxPer,
       auto_assignment_enabled: autoAssignmentEnabled,
     }

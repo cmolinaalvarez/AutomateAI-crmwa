@@ -27,7 +27,7 @@ import {
 import { SettingsPanelHead } from './settings-panel-head';
 import { AiKnowledgeCard } from './ai-knowledge';
 import { AI_PROVIDER_DEFAULT_MODEL } from '@/lib/ai/defaults';
-import type { AiProvider, AiRoutingRule } from '@/lib/ai/types';
+import type { AiAudioMode, AiProvider, AiRoutingRule } from '@/lib/ai/types';
 import type { AccountMember } from '@/types';
 import { fetchAccountMembers, memberLabel } from '@/lib/account/members';
 import { useTranslations } from 'next-intl';
@@ -75,6 +75,7 @@ export function AiConfig() {
   const [systemPrompt, setSystemPrompt] = useState('');
   const [isActive, setIsActive] = useState(false);
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
+  const [audioMode, setAudioMode] = useState<AiAudioMode>('text_only');
   const [maxPerConversation, setMaxPerConversation] = useState(3);
   // Empty string = leave unassigned (shared queue).
   const [handoffAgentId, setHandoffAgentId] = useState('');
@@ -104,6 +105,7 @@ export function AiConfig() {
         setSystemPrompt(data.system_prompt ?? '');
         setIsActive(data.is_active);
         setAutoReplyEnabled(data.auto_reply_enabled);
+        setAudioMode(data.audio_mode ?? 'text_only');
         setMaxPerConversation(data.auto_reply_max_per_conversation ?? 3);
         setHandoffAgentId(data.handoff_agent_id ?? '');
         setAutoAssignmentEnabled(data.auto_assignment_enabled ?? false);
@@ -157,6 +159,7 @@ export function AiConfig() {
     system_prompt: systemPrompt.trim() || null,
     is_active: isActive,
     auto_reply_enabled: autoReplyEnabled,
+    audio_mode: audioMode,
     auto_reply_max_per_conversation: maxPerConversation,
     handoff_agent_id: handoffAgentId || null,
     auto_assignment_enabled: autoAssignmentEnabled,
@@ -227,6 +230,7 @@ export function AiConfig() {
         setKeyEdited(false);
         setIsActive(false);
         setAutoReplyEnabled(false);
+        setAudioMode('text_only');
         setSystemPrompt('');
         setHandoffAgentId('');
         setAutoAssignmentEnabled(false);
@@ -447,6 +451,27 @@ export function AiConfig() {
                 onCheckedChange={setAutoReplyEnabled}
                 disabled={disabled || !isActive}
               />
+            </div>
+
+            <div className="space-y-2 rounded-md border border-border p-3">
+              <Label htmlFor="ai-audio-mode">{t('audioMode')}</Label>
+              <p className="text-xs text-muted-foreground">
+                {t('audioModeDesc')}
+              </p>
+              <Select
+                value={audioMode}
+                onValueChange={(value) => setAudioMode(value as AiAudioMode)}
+                disabled={disabled || !autoReplyEnabled}
+              >
+                <SelectTrigger id="ai-audio-mode">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="text_only">{t('audioModeTextOnly')}</SelectItem>
+                  <SelectItem value="first_audio">{t('audioModeFirst')}</SelectItem>
+                  <SelectItem value="full_audio">{t('audioModeFull')}</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="flex items-center justify-between gap-4">

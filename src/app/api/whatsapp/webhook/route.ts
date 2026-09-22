@@ -421,16 +421,16 @@ async function handleStatusUpdate(status: {
   const failure =
     status.status === 'failed' && status.errors?.[0]
       ? {
-          code: status.errors[0].code,
-          title: status.errors[0].title,
-          details: status.errors[0].error_data?.details ?? null,
-        }
+        code: status.errors[0].code,
+        title: status.errors[0].title,
+        details: status.errors[0].error_data?.details ?? null,
+      }
       : null
 
   if (failure) {
     console.warn(
       `WhatsApp message ${status.id} failed: [${failure.code}] ${failure.title}` +
-        (failure.details ? ` — ${failure.details}` : '')
+      (failure.details ? ` — ${failure.details}` : '')
     )
   }
 
@@ -884,16 +884,16 @@ async function processMessage(
     message:
       interactiveReplyId
         ? {
-            kind: 'interactive_reply',
-            reply_id: interactiveReplyId,
-            reply_title: contentText ?? '',
-            meta_message_id: message.id,
-          }
+          kind: 'interactive_reply',
+          reply_id: interactiveReplyId,
+          reply_title: contentText ?? '',
+          meta_message_id: message.id,
+        }
         : {
-            kind: 'text',
-            text: contentText ?? message.text?.body ?? '',
-            meta_message_id: message.id,
-          },
+          kind: 'text',
+          text: contentText ?? message.text?.body ?? '',
+          meta_message_id: message.id,
+        },
     isFirstInboundMessage,
   })
   const flowConsumed = flowResult.consumed
@@ -954,12 +954,12 @@ async function processMessage(
     }).catch((err) => console.error('[automations] dispatch failed:', err))
   }
 
-  // AI auto-reply. Runs only for plain-text inbound the deterministic
-  // flow runner did NOT consume (flows win over the LLM), and only when
-  // the account has enabled it. Awaited inside `after()` (same reason as
-  // the webhook dispatch below); `dispatchInboundToAiReply` owns its
-  // eligibility gates + try/catch and never throws.
-  if (!flowConsumed && !interactiveReplyId && inboundText.trim()) {
+  // AI auto-reply. Text is answered normally; an audio-only inbound is
+  // represented in conversation context by a safe marker so the model
+  // asks for the request in writing instead of pretending to transcribe it.
+  // Deterministic flows still win over the LLM.
+  const canAutoReply = inboundText.trim() || contentType === 'audio'
+  if (!flowConsumed && !interactiveReplyId && canAutoReply) {
     await dispatchInboundToAiReply({
       accountId,
       conversationId: conversation.id,
@@ -968,6 +968,9 @@ async function processMessage(
       // Lets the bot show "typing…" (and mark the message read) while
       // the reply is generated.
       inboundMessageId: message.id,
+      inboundContentType: contentType,
+      inboundMediaId: message.audio?.id,
+      inboundIsFirstMessage: isFirstInboundMessage,
     })
   }
 

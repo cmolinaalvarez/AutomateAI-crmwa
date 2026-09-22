@@ -1,6 +1,6 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -27,6 +27,8 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -87,68 +89,98 @@
 /* ---- MODE: neutral surfaces ---- */
 
 :root,
-html[data-mode="dark"] {
-  --background: oklch(0.13 0.01 260);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.18 0.01 260);
-  --card-2: oklch(0.205 0.01 260);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.18 0.01 260);
-  --popover-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.22 0.01 260);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.22 0.01 260);
-  --muted-foreground: oklch(0.65 0.01 260);
-  --accent: oklch(0.22 0.01 260);
-  --accent-foreground: oklch(0.985 0 0);
+html[data-mode='dark'] {
+  --background: #0b132b;
+  --foreground: #e0e1dd;
+  --card: #1c2541;
+  --card-2: #243052;
+  --card-foreground: #e0e1dd;
+  --popover: #1c2541;
+  --popover-foreground: #e0e1dd;
+  --secondary: #243052;
+  --secondary-foreground: #e0e1dd;
+  --muted: #243052;
+  --muted-foreground: #a8adb3;
+  --accent: #2a365b;
+  --accent-foreground: #e0e1dd;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.28 0.01 260);
-  --input: oklch(0.28 0.01 260);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --success: #2ecc71;
+  --warning: #f39c12;
+  --border: #495057;
+  --input: #495057;
+  --chart-2: #3a86ff;
+  --chart-3: #2ecc71;
+  --chart-4: #f39c12;
+  --chart-5: #495057;
   --radius: 0.625rem;
-  --sidebar: oklch(0.16 0.01 260);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.22 0.01 260);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.28 0.01 260);
+  --sidebar: #0b132b;
+  --sidebar-foreground: #e0e1dd;
+  --sidebar-accent: #1c2541;
+  --sidebar-accent-foreground: #e0e1dd;
+  --sidebar-border: #495057;
 }
 
-html[data-mode="light"] {
-  --background: oklch(0.99 0.002 260);
-  --foreground: oklch(0.21 0.01 260);
-  --card: oklch(1 0 0);
-  --card-2: oklch(0.985 0.002 260);
-  --card-foreground: oklch(0.21 0.01 260);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0.01 260);
-  --secondary: oklch(0.967 0.003 260);
-  --secondary-foreground: oklch(0.25 0.01 260);
-  --muted: oklch(0.967 0.003 260);
-  --muted-foreground: oklch(0.52 0.015 260);
-  --accent: oklch(0.96 0.004 260);
-  --accent-foreground: oklch(0.25 0.01 260);
+html[data-mode='light'] {
+  --background: #f8f9fa;
+  --foreground: #495057;
+  --card: #ffffff;
+  --card-2: #f1f3f5;
+  --card-foreground: #495057;
+  --popover: #ffffff;
+  --popover-foreground: #495057;
+  --secondary: #eef1f4;
+  --secondary-foreground: #0b132b;
+  --muted: #eef1f4;
+  --muted-foreground: #6c757d;
+  --accent: #e8f1ff;
+  --accent-foreground: #0b132b;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0.004 260);
-  --input: oklch(0.922 0.004 260);
-  --chart-2: oklch(0.6 0.1 260);
-  --chart-3: oklch(0.7 0.06 260);
-  --chart-4: oklch(0.8 0.04 260);
-  --chart-5: oklch(0.87 0.03 260);
+  --success: #2ecc71;
+  --warning: #f39c12;
+  --border: #d7dce1;
+  --input: #c8ced4;
+  --chart-2: #00bfa6;
+  --chart-3: #2ecc71;
+  --chart-4: #f39c12;
+  --chart-5: #495057;
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0.002 260);
-  --sidebar-foreground: oklch(0.21 0.01 260);
-  --sidebar-accent: oklch(0.96 0.004 260);
-  --sidebar-accent-foreground: oklch(0.25 0.01 260);
-  --sidebar-border: oklch(0.922 0.004 260);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #495057;
+  --sidebar-accent: #e8f1ff;
+  --sidebar-accent-foreground: #0b132b;
+  --sidebar-border: #d7dce1;
 }
 
 /* ---- ACCENT: primary color ---- */
 
 :root,
-html[data-theme="violet"] {
+html[data-theme='ai-tech'] {
+  --primary: #00f5d4;
+  --primary-foreground: #0b132b;
+  --primary-hover: #35ffe3;
+  --primary-soft: rgb(0 245 212 / 0.12);
+  --primary-soft-2: rgb(0 245 212 / 0.22);
+  --ring: #00f5d4;
+  --chart-1: #00f5d4;
+  --sidebar-primary: #00f5d4;
+  --sidebar-primary-foreground: #0b132b;
+  --sidebar-ring: #00f5d4;
+}
+
+html[data-mode='light'][data-theme='ai-tech'] {
+  --primary: #3a86ff;
+  --primary-foreground: #0b132b;
+  --primary-hover: #246fe5;
+  --primary-soft: rgb(58 134 255 / 0.12);
+  --primary-soft-2: rgb(58 134 255 / 0.2);
+  --ring: #3a86ff;
+  --chart-1: #3a86ff;
+  --sidebar-primary: #3a86ff;
+  --sidebar-primary-foreground: #0b132b;
+  --sidebar-ring: #3a86ff;
+}
+
+html[data-theme='violet'] {
   --primary: oklch(0.526 0.247 293);
   --primary-foreground: oklch(0.985 0 0);
   --primary-hover: oklch(0.6 0.22 293);
@@ -161,7 +193,7 @@ html[data-theme="violet"] {
   --sidebar-ring: oklch(0.526 0.247 293);
 }
 
-html[data-theme="emerald"] {
+html[data-theme='emerald'] {
   --primary: oklch(0.62 0.16 162);
   --primary-foreground: oklch(0.16 0.02 162);
   --primary-hover: oklch(0.68 0.15 162);
@@ -175,7 +207,7 @@ html[data-theme="emerald"] {
   --sidebar-ring: oklch(0.62 0.16 162);
 }
 
-html[data-theme="cobalt"] {
+html[data-theme='cobalt'] {
   --primary: oklch(0.585 0.2 254);
   --primary-foreground: oklch(0.985 0 0);
   --primary-hover: oklch(0.66 0.18 254);
@@ -189,7 +221,7 @@ html[data-theme="cobalt"] {
   --sidebar-ring: oklch(0.585 0.2 254);
 }
 
-html[data-theme="amber"] {
+html[data-theme='amber'] {
   --primary: oklch(0.745 0.16 65);
   --primary-foreground: oklch(0.18 0.03 65);
   --primary-hover: oklch(0.8 0.15 65);
@@ -203,7 +235,7 @@ html[data-theme="amber"] {
   --sidebar-ring: oklch(0.745 0.16 65);
 }
 
-html[data-theme="rose"] {
+html[data-theme='rose'] {
   --primary: oklch(0.645 0.22 16);
   --primary-foreground: oklch(0.985 0 0);
   --primary-hover: oklch(0.71 0.2 16);
@@ -221,9 +253,11 @@ html[data-theme="rose"] {
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+
   html {
     @apply font-sans;
   }

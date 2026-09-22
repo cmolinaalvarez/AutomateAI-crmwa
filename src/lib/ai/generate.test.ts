@@ -10,6 +10,7 @@ function config(overrides: Partial<AiConfig> = {}): AiConfig {
     systemPrompt: null,
     isActive: true,
     autoReplyEnabled: false,
+    audioMode: overrides.audioMode ?? 'text_only',
     autoReplyMaxPerConversation: 3,
     handoffAgentId: null,
     ...overrides,

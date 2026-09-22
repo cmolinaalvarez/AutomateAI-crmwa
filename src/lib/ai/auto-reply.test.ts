@@ -8,8 +8,12 @@ const h = vi.hoisted(() => ({
   retrieveKnowledge: vi.fn(),
   generateReply: vi.fn(),
   engineSendText: vi.fn(),
+  engineSendMedia: vi.fn(),
   loadAccountMetaCredentials: vi.fn(),
   sendTypingIndicator: vi.fn(),
+  transcribeWhatsAppAudio: vi.fn(),
+  synthesizeLatinFemaleSpeech: vi.fn(),
+  publishGeneratedSpeech: vi.fn(),
   state: {
     conv: null as Record<string, unknown> | null,
     autoResponders: [] as { id: string }[],
@@ -29,7 +33,15 @@ vi.mock('./knowledge', () => ({ retrieveKnowledge: h.retrieveKnowledge }))
 vi.mock('./generate', () => ({ generateReply: h.generateReply }))
 vi.mock('@/lib/flows/meta-send', () => ({
   engineSendText: h.engineSendText,
+  engineSendMedia: h.engineSendMedia,
   loadAccountMetaCredentials: h.loadAccountMetaCredentials,
+}))
+vi.mock('./audio', () => ({
+  audioServiceApiKey: (config: AiConfig) => config.apiKey,
+  FIRST_AUDIO_REMINDER: 'Please continue in text.',
+  transcribeWhatsAppAudio: h.transcribeWhatsAppAudio,
+  synthesizeLatinFemaleSpeech: h.synthesizeLatinFemaleSpeech,
+  publishGeneratedSpeech: h.publishGeneratedSpeech,
 }))
 vi.mock('@/lib/whatsapp/meta-api', () => ({
   sendTypingIndicator: h.sendTypingIndicator,
@@ -132,6 +144,7 @@ function aiConfig(overrides: Partial<AiConfig> = {}): AiConfig {
     systemPrompt: null,
     isActive: true,
     autoReplyEnabled: true,
+    audioMode: 'text_only',
     autoReplyMaxPerConversation: 3,
     handoffAgentId: null,
     autoAssignmentEnabled: false,
@@ -160,6 +173,10 @@ beforeEach(() => {
   h.retrieveKnowledge.mockResolvedValue([])
   h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false })
   h.engineSendText.mockResolvedValue({ whatsapp_message_id: 'm1' })
+  h.engineSendMedia.mockResolvedValue({ whatsapp_message_id: 'm2' })
+  h.transcribeWhatsAppAudio.mockResolvedValue('I need help with billing')
+  h.synthesizeLatinFemaleSpeech.mockResolvedValue(new Uint8Array([1]))
+  h.publishGeneratedSpeech.mockResolvedValue('https://example.com/reply.mp3')
   h.loadAccountMetaCredentials.mockResolvedValue({
     phoneNumberId: 'pn-1',
     accessToken: 'tok',
@@ -168,6 +185,58 @@ beforeEach(() => {
 })
 
 describe('dispatchInboundToAiReply — eligibility gates', () => {
+  it('does not spend an AI call for audio when audio replies are disabled', async () => {
+    await dispatchInboundToAiReply({ ...ARGS, inboundContentType: 'audio' })
+    expect(h.buildConversationContext).not.toHaveBeenCalled()
+    expect(h.generateReply).not.toHaveBeenCalled()
+    expect(h.sendTypingIndicator).not.toHaveBeenCalled()
+  })
+
+  it('processes and answers audio in full-audio mode', async () => {
+    h.loadAiConfig.mockResolvedValue(aiConfig({ audioMode: 'full_audio' }))
+    await dispatchInboundToAiReply({
+      ...ARGS,
+      inboundContentType: 'audio',
+      inboundMediaId: 'media-1',
+    })
+    expect(h.transcribeWhatsAppAudio).toHaveBeenCalledTimes(1)
+    expect(h.buildConversationContext).toHaveBeenCalledWith(
+      expect.anything(),
+      'conv-1',
+      undefined,
+      true,
+    )
+    expect(h.generateReply).toHaveBeenCalledTimes(1)
+    expect(h.engineSendMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'audio', contentText: 'Hello!' }),
+    )
+  })
+
+  it('only accepts audio as the first customer message in first-audio mode', async () => {
+    h.loadAiConfig.mockResolvedValue(aiConfig({ audioMode: 'first_audio' }))
+    await dispatchInboundToAiReply({
+      ...ARGS,
+      inboundContentType: 'audio',
+      inboundMediaId: 'media-1',
+      inboundIsFirstMessage: false,
+    })
+    expect(h.transcribeWhatsAppAudio).not.toHaveBeenCalled()
+    expect(h.generateReply).not.toHaveBeenCalled()
+
+    await dispatchInboundToAiReply({
+      ...ARGS,
+      inboundContentType: 'audio',
+      inboundMediaId: 'media-1',
+      inboundIsFirstMessage: true,
+    })
+    expect(h.transcribeWhatsAppAudio).toHaveBeenCalledTimes(1)
+    expect(h.engineSendMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contentText: 'Hello!\n\nPlease continue in text.',
+      }),
+    )
+  })
+
   it('claims a slot and sends on the happy path', async () => {
     await dispatchInboundToAiReply(ARGS)
     expect(h.state.rpcCalls).toEqual([

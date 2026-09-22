@@ -70,6 +70,7 @@ export async function POST(request: Request) {
         systemPrompt: null,
         isActive: true,
         autoReplyEnabled: false,
+        audioMode: 'text_only',
         autoReplyMaxPerConversation: 3,
         handoffAgentId: null,
         autoAssignmentEnabled: false,

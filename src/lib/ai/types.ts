@@ -11,6 +11,13 @@ export type AiProvider = 'openai' | 'anthropic' | 'openrouter' | 'gemini'
 /** Every valid `AiProvider` value, for validation and UI iteration. */
 export const AI_PROVIDERS: readonly AiProvider[] = ['openai', 'anthropic', 'openrouter', 'gemini']
 
+export type AiAudioMode = 'text_only' | 'first_audio' | 'full_audio'
+export const AI_AUDIO_MODES: readonly AiAudioMode[] = [
+  'text_only',
+  'first_audio',
+  'full_audio',
+]
+
 export interface AiRoutingRule {
   key: string
   label: string
@@ -30,6 +37,8 @@ export interface AiConfig {
   systemPrompt: string | null
   isActive: boolean
   autoReplyEnabled: boolean
+  /** How inbound voice notes are transcribed and answered. */
+  audioMode: AiAudioMode
   autoReplyMaxPerConversation: number
   /** Where auto-reply hands a conversation off when the model bails: an
    *  agent's `auth.users.id`, or null to leave it unassigned (drop into
